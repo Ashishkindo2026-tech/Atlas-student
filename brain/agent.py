@@ -38,12 +38,7 @@ class AtlasAgent:
                 add_message("assistant", response)
                 return response
 
-        if clean in {
-            "what have you learned about how i like you to respond",
-            "what have you learned about my preferences",
-            "show my personality preferences",
-            "show adaptation",
-        }:
+        if clean in {"what have you learned about how i like you to respond", "what have you learned about my preferences", "show my personality preferences", "show adaptation"}:
             response = self.personality.explain()
             add_message("assistant", response)
             return response
@@ -61,10 +56,7 @@ class AtlasAgent:
 
         if clean.startswith("add goal ") or clean.startswith("my goal is "):
             goal = text.split(" ", 2)[2].strip() if clean.startswith("add goal ") else text[len("my goal is "):].strip()
-            if self.goals.add_goal(goal):
-                response = f"Got it. I've added this goal: {goal}"
-            else:
-                response = "That goal is already active or empty."
+            response = f"Got it. I've added this goal: {goal}" if self.goals.add_goal(goal) else "That goal is already active or empty."
             add_message("assistant", response)
             return response
 
@@ -108,9 +100,15 @@ class AtlasAgent:
             add_message("assistant", response)
             return response
 
+        if memory_type == "show_archive":
+            archive = self.memory_router.get_archive()
+            response = "\n".join(f"- {x['content']} ({x['archived_at']})" for x in archive) if archive else "The memory archive is empty."
+            add_message("assistant", response)
+            return response
+
         if memory_type == "forget_all":
             self.memory_router.forget_all_memory()
-            response = "Okay. I deleted the active long-term memories. Archived information is kept separately."
+            response = "Okay. I removed the active long-term memories. Archived information is kept separately."
             add_message("assistant", response)
             return response
 
@@ -127,7 +125,7 @@ class AtlasAgent:
             add_message("assistant", response)
             return response
 
-        if clean in {"who created you"}:
+        if clean == "who created you":
             response = "I was created by Ashish."
             add_message("assistant", response)
             return response
