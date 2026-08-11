@@ -13,6 +13,7 @@ from education.agent_bridge import education_context
 from education.retrieval import retrieve
 from education.study_planner import build_study_plan, format_plan
 from student.progress_manager import ProgressManager
+from learning.learning_signal_detector import detect as detect_learning_signal
 import re
 
 
@@ -31,12 +32,38 @@ class AtlasAgent:
         add_message("assistant", response)
         return response
 
+    @staticmethod
+    def _explicit_subject(text: str):
+        subjects = ["physics", "chemistry", "mathematics", "math", "biology", "english", "science", "history", "geography", "computer science"]
+        lower = text.lower()
+        subject = next((s for s in subjects if re.search(rf"\b{re.escape(s)}\b", lower)), None)
+        return "mathematics" if subject == "math" else subject
+
+    def _learn_from_message(self, text: str):
+        """Record explicit learning evidence; never turn a signal into mastery."""
+        signal = detect_learning_signal(text)
+        if signal is None:
+            return None
+        subject = self._explicit_subject(text)
+        self.progress.record_learning_signal(
+            signal.kind,
+            signal.concept,
+            signal.confidence,
+            signal.evidence,
+            subject,
+        )
+        return signal
+
     def process(self, user):
         text = user.strip()
         lower = text.lower()
         clean = lower.rstrip("?!.")
         if not text:
             return self._reply("Tell me what you'd like to work on.")
+
+        # Automatic learning is deliberately evidence-based. It runs on the
+        # user's message only and never silently creates a mastery percentage.
+        self._learn_from_message(text)
 
         if self.pending_memory:
             if clean in {"yes", "yes remember it", "remember it", "save it", "save", "okay", "ok"}:
@@ -245,6 +272,7 @@ SYSTEM RULES:
 15. Never claim that content is from an NCERT/CBSE book when no matching indexed education source was retrieved.
 16. Treat learning progress as evidence only when explicitly recorded; never manufacture mastery scores.
 17. For explicit study-planning requests, use the deterministic study planner when indexed material is available rather than inventing chapters.
+18. Learning signals are evidence only. Do not convert one message into a mastery percentage.
 """
         return self.llm.ask(prompt)
 
