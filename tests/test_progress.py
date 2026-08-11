@@ -26,7 +26,10 @@ class ProgressManagerTests(unittest.TestCase):
             path.write_text("not-json", encoding="utf-8")
             with patch("student.progress_manager.FILE", path):
                 manager = ProgressManager()
-                self.assertEqual(manager.data(), {"subjects": {}, "concepts": {}, "sessions": []})
+                self.assertEqual(
+                    manager.data(),
+                    {"subjects": {}, "concepts": {}, "sessions": [], "learning_signals": []},
+                )
                 manager.record_session("Math", 20)
                 self.assertEqual(manager.data()["subjects"]["Math"]["minutes"], 20)
 
