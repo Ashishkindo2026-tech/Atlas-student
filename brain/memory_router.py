@@ -11,6 +11,13 @@ class MemoryRouter:
         text = user_input.strip()
         lower = text.lower()
 
+        if lower in {"forget everything", "forget all", "delete all memories"}:
+            return {"type": "forget_all", "value": None}
+        if lower in {"show memory", "show my memory", "what do you remember"}:
+            return {"type": "show_memory", "value": None}
+        if lower in {"show archive", "show archived memories", "what is archived"}:
+            return {"type": "show_archive", "value": None}
+
         for prefix in ["remember that ", "please remember ", "don't forget that ", "do not forget that ", "remember "]:
             if lower.startswith(prefix):
                 value = text[len(prefix):].strip()
@@ -23,12 +30,6 @@ class MemoryRouter:
                 if value:
                     return {"type": "forget_request", "value": value}
 
-        if lower in {"show memory", "show my memory", "what do you remember"}:
-            return {"type": "show_memory", "value": None}
-        if lower in {"forget everything", "forget all", "delete all memories"}:
-            return {"type": "forget_all", "value": None}
-        if lower in {"show archive", "show archived memories", "what is archived"}:
-            return {"type": "show_archive", "value": None}
         return {"type": "conversation", "value": None}
 
     def save_memory(self, memory_text):
