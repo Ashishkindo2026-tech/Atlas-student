@@ -8,6 +8,7 @@ from llm.ollama_client import Ollama_Client
 from personality.personality import Personality
 from goals.goal_manager import GoalManager
 from user.knowledge import UserKnowledge
+from brain.reasoning_engine import ReasoningEngine
 
 
 class AtlasAgent:
@@ -17,6 +18,7 @@ class AtlasAgent:
         self.personality = Personality()
         self.goals = GoalManager()
         self.user_knowledge = UserKnowledge()
+        self.reasoning = ReasoningEngine()
         self.pending_memory = None
 
     def _reply(self, response):
@@ -56,7 +58,7 @@ class AtlasAgent:
         if clean.startswith("progress goal "):
             remainder = text[len("progress goal "):].strip()
             if "%" in remainder:
-                before, after = remainder.rsplit("%", 1)[0], ""
+                before = remainder.rsplit("%", 1)[0]
                 parts = before.rsplit(" ", 1)
                 if len(parts) == 2:
                     try:
@@ -129,6 +131,7 @@ class AtlasAgent:
 
     def ask_llm(self, user):
         context = build_context(user)
+        reasoning = self.reasoning.prompt_context(user, context)
         prompt = f"""You are Atlas Student, a local-first personal AI for a student.
 
 ATLAS PERSONALITY CORE:
@@ -146,6 +149,10 @@ AVAILABLE LOCAL TOOLS:
 {context['tools']}
 RECENT CONVERSATION:
 {context['history']}
+
+REASONING LAYER:
+{reasoning}
+
 CURRENT USER MESSAGE:
 {context['user_input']}
 
@@ -159,7 +166,10 @@ SYSTEM RULES:
 7. Atlas core values are immutable: honesty, privacy, safety, respect, user control, and no manipulation.
 8. Do not claim to have used a tool unless the application actually used it.
 9. For uncertain facts, say you don't know.
-10. Answer directly and naturally for the current context."""
+10. Use the reasoning layer as a planning scaffold, then produce a direct, useful response.
+11. If constraints are missing, state the missing information instead of inventing it.
+12. For plans, verify that the proposed actions fit the user's stated time and constraints.
+"""
         return self.llm.ask(prompt)
 
 
