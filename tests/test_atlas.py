@@ -1,4 +1,3 @@
-import json
 import os
 import tempfile
 import unittest
@@ -22,11 +21,11 @@ class AtlasRobustnessTests(unittest.TestCase):
     def test_personality_survives_reload(self):
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, "adaptation.json")
-            with patch("personality.personality.FILE", path):
+            with patch("personality.personality.ADAPTATION_FILE", path):
                 first = Personality()
-                first.observe("verbosity", "concise", 0.7, "test", "general")
+                first.observe("Keep it short, please.")
                 second = Personality()
-                data = second.get()
+                data = second.get_adaptation()
                 self.assertIn("verbosity", data["preferences"])
                 self.assertEqual(data["preferences"]["verbosity"]["value"], "concise")
 
@@ -41,22 +40,27 @@ class AtlasRobustnessTests(unittest.TestCase):
 
     def test_goal_round_trip(self):
         with tempfile.TemporaryDirectory() as d:
-            path = os.path.join(d, "goals.json")
-            with patch("goals.goal_manager.FILE", path):
+            old_cwd = os.getcwd()
+            try:
+                os.chdir(d)
                 goals = GoalManager()
                 self.assertTrue(goals.add_goal("Build Atlas Student"))
                 self.assertFalse(goals.add_goal("Build Atlas Student"))
+                self.assertTrue(goals.update_progress("Build Atlas Student", 50))
+                self.assertEqual(goals.get_goals()[0]["progress"], 50)
                 self.assertTrue(goals.complete_goal("Build Atlas Student"))
                 self.assertFalse(goals.complete_goal("Build Atlas Student"))
+            finally:
+                os.chdir(old_cwd)
 
     def test_corrupt_personality_file_recovers(self):
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, "adaptation.json")
             with open(path, "w", encoding="utf-8") as f:
                 f.write("{broken json")
-            with patch("personality.personality.FILE", path):
+            with patch("personality.personality.ADAPTATION_FILE", path):
                 personality = Personality()
-                data = personality.get()
+                data = personality.get_adaptation()
                 self.assertIsInstance(data, dict)
                 self.assertIn("preferences", data)
 
