@@ -10,6 +10,7 @@ from goals.goal_manager import GoalManager
 from user.knowledge import UserKnowledge
 from brain.reasoning_engine import ReasoningEngine
 from education.agent_bridge import education_context
+from student.progress_manager import ProgressManager
 
 
 class AtlasAgent:
@@ -20,6 +21,7 @@ class AtlasAgent:
         self.goals = GoalManager()
         self.user_knowledge = UserKnowledge()
         self.reasoning = ReasoningEngine()
+        self.progress = ProgressManager()
         self.pending_memory = None
 
     def _reply(self, response):
@@ -50,6 +52,36 @@ class AtlasAgent:
             return self._reply("Okay. I reset my learned response preferences.")
         if clean in {"show goals", "what are my goals", "list goals"}:
             return self._reply(self.goals.summary())
+        if clean in {"show progress", "show my progress", "learning progress", "what is my learning progress"}:
+            return self._reply(self.progress.summary())
+        if clean == "reset learning progress":
+            self.progress.reset()
+            return self._reply("Okay. I reset the learning-progress record.")
+
+        if clean.startswith("study session "):
+            # Syntax: study session <subject> <minutes> [topic]
+            parts = text[len("study session "):].strip().split()
+            if len(parts) >= 2:
+                try:
+                    minutes = int(parts[1])
+                    subject = parts[0]
+                    topic = " ".join(parts[2:])
+                    self.progress.record_session(subject, minutes, topic)
+                    return self._reply(f"Recorded {minutes} minutes of {subject} study.")
+                except ValueError:
+                    pass
+            return self._reply("Use: study session <subject> <minutes> [topic]")
+
+        if clean.startswith("set mastery "):
+            # Syntax: set mastery <subject> | <concept> | <0-100>
+            raw = text[len("set mastery "):].strip().split("|")
+            if len(raw) == 3:
+                try:
+                    ok = self.progress.set_mastery(raw[0], raw[1], int(raw[2].strip()))
+                    return self._reply("Mastery updated." if ok else "Mastery must be between 0 and 100.")
+                except ValueError:
+                    pass
+            return self._reply("Use: set mastery <subject> | <concept> | <0-100>")
 
         if clean.startswith("add goal ") or clean.startswith("my goal is "):
             prefix = "add goal " if clean.startswith("add goal ") else "my goal is "
@@ -139,6 +171,7 @@ class AtlasAgent:
 
         reasoning = self.reasoning.prompt_context(user, context)
         education = education_context(user)
+        progress = self.progress.summary()
         prompt = f"""You are Atlas Student, a local-first personal AI for a student.
 
 ATLAS PERSONALITY CORE:
@@ -152,6 +185,8 @@ ACTIVE GOALS:
 {context['goals']}
 EXPLICIT USER KNOWLEDGE:
 {context['user_knowledge']}
+LEARNING PROGRESS:
+{progress}
 AVAILABLE LOCAL TOOLS:
 {context['tools']}
 RECENT CONVERSATION:
@@ -172,7 +207,7 @@ SYSTEM RULES:
 3. Learned personality preferences are soft guidance and can change.
 4. Prefer the current request when it conflicts with an older preference.
 5. Never infer sensitive personal traits from writing style or behavior.
-6. Never invent user facts, goals, memories, or achievements.
+6. Never invent user facts, goals, memories, achievements, or learning progress.
 7. Atlas core values are immutable: honesty, privacy, safety, respect, user control, and no manipulation.
 8. Do not claim to have used a tool unless the application actually used it.
 9. For uncertain facts, say you don't know.
@@ -182,6 +217,7 @@ SYSTEM RULES:
 13. A stored preference such as favorite_subject is not evidence of the subject of the current exam.
 14. When education retrieval is present, use it as the primary source for NCERT/CBSE-specific questions and preserve page/source references when useful.
 15. Never claim that content is from an NCERT/CBSE book when no matching indexed education source was retrieved.
+16. Treat learning progress as evidence only when explicitly recorded; never manufacture mastery scores.
 """
         return self.llm.ask(prompt)
 
