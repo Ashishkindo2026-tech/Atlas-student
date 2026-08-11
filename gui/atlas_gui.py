@@ -1,207 +1,294 @@
-import customtkinter as ctk
 import os
 import sys
 from tkinter import filedialog, messagebox, simpledialog
 
+import customtkinter as ctk
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from brain.agent import process
 from education.ingest import ingest_pdf
 
-# Atlas Student UI — based on the supplied desktop mockup.
-# Three desktop themes: Default, Black, White.
-THEMES = {
-    "default": {
-        "bg": "#240B0F", "surface": "#351319", "panel": "#FFF7ED",
-        "panel2": "#F1D8C1", "sidebar": "#360B12", "accent": "#D89A20",
-        "accent2": "#F1B63B", "text": "#FFF8EF", "dark": "#2A1510",
-        "muted": "#D8B9A5", "border": "#6C2B30", "bubble": "#F4E2D0"
-    },
-    "black": {
-        "bg": "#050505", "surface": "#111111", "panel": "#191919",
-        "panel2": "#242424", "sidebar": "#160A0C", "accent": "#DCA12D",
-        "accent2": "#F2C45B", "text": "#F8F4EE", "dark": "#16110D",
-        "muted": "#B8ACA2", "border": "#3C3030", "bubble": "#252525"
-    },
-    "white": {
-        "bg": "#FAF7F1", "surface": "#FFFDF9", "panel": "#FFFFFF",
-        "panel2": "#F2E3D1", "sidebar": "#4A0F17", "accent": "#D19A2E",
-        "accent2": "#E9B84A", "text": "#2D2020", "dark": "#2D2020",
-        "muted": "#7A6C66", "border": "#E1C9B2", "bubble": "#FFF1E2"
-    }
-}
 
-ctk.set_appearance_mode("light")
+# Atlas Student — Orbit UI
+# A fresh interface, intentionally different from the previous mockup.
+# The design uses a quiet midnight canvas, a floating command rail,
+# large information surfaces, and an orbital Atlas focus element.
+
+BG = "#090B10"
+SURFACE = "#10141C"
+SURFACE_2 = "#151A24"
+SURFACE_3 = "#1B2130"
+TEXT = "#F3F5F7"
+MUTED = "#8D97A8"
+ACCENT = "#7C9CFF"
+ACCENT_HOVER = "#9CB4FF"
+ACCENT_SOFT = "#263252"
+SUCCESS = "#6FD1A5"
+BORDER = "#252D3B"
+WHITE = "#FFFFFF"
+
+ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("dark-blue")
 
 
 class AtlasGUI(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.theme_name = "default"
-        self.colors = THEMES[self.theme_name]
         self.title("Atlas Student")
-        self.geometry("1280x800")
+        self.geometry("1320x820")
         self.minsize(1050, 680)
-        self.configure(fg_color=self.colors["bg"])
+        self.configure(fg_color=BG)
+
+        self.current_page = "home"
         self._build_shell()
         self.show_home()
 
+    # ---------------------------- shell ----------------------------
+
     def _build_shell(self):
-        self.sidebar = ctk.CTkFrame(self, width=205, fg_color=self.colors["sidebar"], corner_radius=0)
-        self.sidebar.pack(side="left", fill="y")
-        self.sidebar.pack_propagate(False)
+        self.rail = ctk.CTkFrame(
+            self, width=82, fg_color="#07090D", corner_radius=0,
+            border_width=0
+        )
+        self.rail.pack(side="left", fill="y")
+        self.rail.pack_propagate(False)
 
-        ctk.CTkLabel(self.sidebar, text="✦ ATLAS STUDENT", text_color="#E6C17A",
-                     font=("Georgia", 13, "bold")).pack(anchor="w", padx=22, pady=(22, 22))
+        ctk.CTkLabel(
+            self.rail, text="A", text_color=ACCENT,
+            font=("Georgia", 28, "bold")
+        ).pack(pady=(28, 4))
+        ctk.CTkLabel(
+            self.rail, text="ATLAS", text_color=MUTED,
+            font=("Segoe UI", 8, "bold")
+        ).pack(pady=(0, 28))
 
-        self.nav = []
-        items = [
-            ("⌂  Home", self.show_home), ("◉  Chat", self.show_chat),
-            ("▣  My Library", self.show_library), ("◎  Memory", self.show_memory),
-            ("◇  Goals", self.show_goals), ("▤  Progress", self.show_progress),
-            ("◌  Voice", self.show_voice)
+        nav = [
+            ("⌂", "Home", self.show_home),
+            ("✦", "Ask", self.show_chat),
+            ("▱", "Library", self.show_library),
+            ("◉", "Memory", self.show_memory),
+            ("◇", "Goals", self.show_goals),
+            ("▥", "Progress", self.show_progress),
         ]
-        for text, command in items:
-            btn = ctk.CTkButton(self.sidebar, text=text, command=command, anchor="w",
-                                fg_color="transparent", hover_color="#5B1821",
-                                text_color="#F7E9DF", font=("Segoe UI", 11),
-                                height=38, corner_radius=7)
-            btn.pack(fill="x", padx=10, pady=2)
-            self.nav.append(btn)
+        self.nav_buttons = []
+        for icon, label, command in nav:
+            btn = ctk.CTkButton(
+                self.rail, text=icon, command=command,
+                width=54, height=48, fg_color="transparent",
+                hover_color=ACCENT_SOFT, text_color=MUTED,
+                font=("Segoe UI Symbol", 19), corner_radius=14
+            )
+            btn.pack(pady=4)
+            self.nav_buttons.append((btn, label))
 
-        ctk.CTkButton(self.sidebar, text="⚙  Settings", anchor="w",
-                      command=self.show_settings, fg_color="transparent",
-                      hover_color="#5B1821", text_color="#D5B7AA",
-                      font=("Segoe UI", 10), height=38, corner_radius=7).pack(
-                          side="bottom", fill="x", padx=10, pady=16)
+        ctk.CTkButton(
+            self.rail, text="◌", command=self.show_voice,
+            width=54, height=48, fg_color=ACCENT_SOFT,
+            hover_color=ACCENT, text_color=ACCENT_HOVER,
+            font=("Segoe UI Symbol", 19), corner_radius=14
+        ).pack(side="bottom", pady=(4, 8))
+        ctk.CTkButton(
+            self.rail, text="⚙", command=self.show_settings,
+            width=54, height=42, fg_color="transparent",
+            hover_color=SURFACE_2, text_color=MUTED,
+            font=("Segoe UI", 16), corner_radius=12
+        ).pack(side="bottom", pady=(0, 20))
 
-        self.main = ctk.CTkFrame(self, fg_color=self.colors["bg"], corner_radius=0)
+        self.main = ctk.CTkFrame(self, fg_color=BG, corner_radius=0)
         self.main.pack(side="left", fill="both", expand=True)
 
     def clear(self):
-        for widget in self.main.winfo_children():
-            widget.destroy()
+        for child in self.main.winfo_children():
+            child.destroy()
 
-    def apply_theme(self, name):
-        if name not in THEMES:
-            return
-        self.theme_name = name
-        self.colors = THEMES[name]
-        self.configure(fg_color=self.colors["bg"])
-        self.sidebar.configure(fg_color=self.colors["sidebar"])
-        self.main.configure(fg_color=self.colors["bg"])
-        self.show_home()
-
-    def topbar(self):
-        bar = ctk.CTkFrame(self.main, fg_color="transparent", height=52)
-        bar.pack(fill="x", padx=26, pady=(15, 0))
-        ctk.CTkLabel(bar, text="Desktop:", text_color=self.colors["muted"],
-                     font=("Segoe UI", 10)).pack(side="right", padx=(0, 8))
-        for name, label in (("default", "DEFAULT"), ("black", "BLACK"), ("white", "WHITE")):
-            ctk.CTkButton(bar, text=label, width=64, height=27, command=lambda n=name: self.apply_theme(n),
-                          fg_color=self.colors["surface"] if name != self.theme_name else self.colors["accent"],
-                          hover_color=self.colors["accent2"],
-                          text_color=self.colors["text"] if name != self.theme_name else self.colors["dark"],
-                          font=("Segoe UI", 8, "bold"), corner_radius=6).pack(side="right", padx=3)
-
-    def heading(self, title, subtitle=None):
-        self.topbar()
-        ctk.CTkLabel(self.main, text=title, text_color=self.colors["text"],
-                     font=("Georgia", 26, "bold")).pack(anchor="w", padx=38, pady=(5, 0))
+    def header(self, eyebrow, title, subtitle=""):
+        top = ctk.CTkFrame(self.main, fg_color="transparent")
+        top.pack(fill="x", padx=46, pady=(34, 0))
+        ctk.CTkLabel(
+            top, text=eyebrow.upper(), text_color=ACCENT,
+            font=("Segoe UI", 9, "bold")
+        ).pack(anchor="w")
+        ctk.CTkLabel(
+            top, text=title, text_color=TEXT,
+            font=("Georgia", 31, "bold")
+        ).pack(anchor="w", pady=(4, 0))
         if subtitle:
-            ctk.CTkLabel(self.main, text=subtitle, text_color=self.colors["muted"],
-                         font=("Segoe UI", 11)).pack(anchor="w", padx=40, pady=(2, 17))
+            ctk.CTkLabel(
+                top, text=subtitle, text_color=MUTED,
+                font=("Segoe UI", 11)
+            ).pack(anchor="w", pady=(4, 20))
 
-    def card(self, title, body="", parent=None, compact=False):
-        p = parent or self.main
-        frame = ctk.CTkFrame(p, fg_color=self.colors["panel"], corner_radius=10,
-                             border_width=1, border_color=self.colors["border"])
-        ctk.CTkLabel(frame, text=title, text_color=self.colors["dark"],
-                     font=("Segoe UI", 11, "bold")).pack(anchor="w", padx=14, pady=(12, 3))
-        if body:
-            ctk.CTkLabel(frame, text=body, text_color=self.colors["dark"], justify="left",
-                         wraplength=350 if compact else 700,
-                         font=("Segoe UI", 9)).pack(anchor="w", padx=14, pady=(0, 12))
-        return frame
+    def surface(self, parent=None, color=SURFACE, radius=18):
+        return ctk.CTkFrame(
+            parent or self.main, fg_color=color,
+            corner_radius=radius, border_width=1,
+            border_color=BORDER
+        )
+
+    def pill(self, parent, text, command=None, active=False):
+        return ctk.CTkButton(
+            parent, text=text, command=command,
+            height=30, corner_radius=15,
+            fg_color=ACCENT if active else SURFACE_2,
+            hover_color=ACCENT_HOVER if active else SURFACE_3,
+            text_color=BG if active else MUTED,
+            font=("Segoe UI", 9, "bold")
+        )
+
+    # ---------------------------- home ----------------------------
 
     def show_home(self):
+        self.current_page = "home"
         self.clear()
-        self.heading("Good evening, Ashish.", "What are we learning today?")
-        hero = ctk.CTkFrame(self.main, fg_color=self.colors["surface"], corner_radius=14,
-                            border_width=1, border_color=self.colors["border"])
-        hero.pack(fill="x", padx=38, pady=4)
-        ctk.CTkLabel(hero, text="ATLAS", text_color=self.colors["accent2"],
-                     font=("Georgia", 11, "bold")).pack(anchor="w", padx=22, pady=(17, 0))
-        ctk.CTkLabel(hero, text="A personal learning companion that grows with you.",
-                     text_color=self.colors["text"], font=("Georgia", 16, "bold")).pack(anchor="w", padx=22, pady=4)
-        ctk.CTkLabel(hero, text="Memory • NCERT Library • Goals • Progress • Voice",
-                     text_color=self.colors["muted"], font=("Segoe UI", 9)).pack(anchor="w", padx=22)
-        ctk.CTkButton(hero, text="What are you learning today?", command=self.show_chat,
-                      fg_color=self.colors["accent"], hover_color=self.colors["accent2"],
-                      text_color=self.colors["dark"], height=34, corner_radius=8).pack(anchor="e", padx=20, pady=15)
+        self.header("Atlas Student", "Your learning orbit.", "One place for your books, memory, goals and progress.")
 
-        row = ctk.CTkFrame(self.main, fg_color="transparent")
-        row.pack(fill="both", expand=True, padx=38, pady=17)
-        for title, body in [
-            ("📚 My Library", "CBSE Classes 9–12\nScience • Mathematics • Social Science\nEnglish • Physics • Chemistry"),
-            ("🧠 Memory", "Things I Know\nImportant memories\nLearning history\nPreferences"),
-            ("📈 Learning Progress", "Physics      60%\nThermodynamics  60%\nWaves       20%\nStrengths & revision needs")
-        ]:
-            self.card(title, body, row, compact=True).pack(side="left", fill="both", expand=True, padx=(0, 10))
+        body = ctk.CTkFrame(self.main, fg_color="transparent")
+        body.pack(fill="both", expand=True, padx=46, pady=(0, 36))
+        body.grid_columnconfigure(0, weight=7)
+        body.grid_columnconfigure(1, weight=4)
+        body.grid_rowconfigure(0, weight=1)
+        body.grid_rowconfigure(1, weight=1)
 
-    def show_chat(self):
-        self.clear()
-        self.heading("Chat", "Talk naturally with Atlas")
-        chat = ctk.CTkTextbox(self.main, fg_color=self.colors["surface"],
-                              text_color=self.colors["text"], font=("Segoe UI", 10),
-                              corner_radius=12, border_width=1, border_color=self.colors["border"])
-        chat.pack(fill="both", expand=True, padx=38)
-        chat.insert("end", "Atlas\n\nAtlas responds to the same person it learns from.\n\n")
-        row = ctk.CTkFrame(self.main, fg_color="transparent")
-        row.pack(fill="x", padx=38, pady=12)
-        entry = ctk.CTkEntry(row, placeholder_text="Type a message...", height=40,
-                             fg_color=self.colors["surface"], text_color=self.colors["text"],
-                             border_color=self.colors["border"])
+        # Main Atlas focus
+        focus = self.surface(body, SURFACE, 24)
+        focus.grid(row=0, column=0, rowspan=2, sticky="nsew", padx=(0, 14))
+
+        ctk.CTkLabel(
+            focus, text="READY", text_color=SUCCESS,
+            font=("Segoe UI", 9, "bold")
+        ).pack(anchor="w", padx=28, pady=(26, 0))
+        ctk.CTkLabel(
+            focus, text="What should we\nwork on?", text_color=TEXT,
+            justify="left", font=("Georgia", 34, "bold")
+        ).pack(anchor="w", padx=28, pady=(8, 8))
+        ctk.CTkLabel(
+            focus, text="Ask Atlas to explain, plan, remember,\nfind something in your library, or help you learn.",
+            text_color=MUTED, justify="left", font=("Segoe UI", 11)
+        ).pack(anchor="w", padx=28)
+
+        entry_row = ctk.CTkFrame(focus, fg_color="transparent")
+        entry_row.pack(fill="x", padx=28, pady=(28, 0))
+        entry = ctk.CTkEntry(
+            entry_row, placeholder_text="Start with a question...",
+            height=48, fg_color=SURFACE_2, border_color=BORDER,
+            text_color=TEXT, corner_radius=14
+        )
         entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
 
-        def send(event=None):
+        def ask():
             text = entry.get().strip()
+            if text:
+                self.show_chat(initial=text)
+
+        entry.bind("<Return>", lambda _e: ask())
+        ctk.CTkButton(
+            entry_row, text="→", command=ask, width=52, height=48,
+            fg_color=ACCENT, hover_color=ACCENT_HOVER,
+            text_color=BG, font=("Segoe UI", 18, "bold"), corner_radius=14
+        ).pack(side="right")
+
+        shortcuts = ctk.CTkFrame(focus, fg_color="transparent")
+        shortcuts.pack(anchor="w", padx=28, pady=22)
+        for label, command in [
+            ("Explain something", self.show_chat),
+            ("Open library", self.show_library),
+            ("Check progress", self.show_progress),
+        ]:
+            self.pill(shortcuts, label, command).pack(side="left", padx=(0, 7))
+
+        memory = self.surface(body, SURFACE_2, 20)
+        memory.grid(row=0, column=1, sticky="nsew", pady=(0, 7))
+        ctk.CTkLabel(memory, text="MEMORY", text_color=ACCENT, font=("Segoe UI", 9, "bold")).pack(anchor="w", padx=20, pady=(20, 5))
+        ctk.CTkLabel(memory, text="1 important memory", text_color=TEXT, font=("Segoe UI", 15, "bold")).pack(anchor="w", padx=20)
+        ctk.CTkLabel(memory, text="You are building Atlas Student.", text_color=MUTED, wraplength=300, justify="left", font=("Segoe UI", 10)).pack(anchor="w", padx=20, pady=(5, 16))
+
+        progress = self.surface(body, SURFACE_2, 20)
+        progress.grid(row=1, column=1, sticky="nsew", pady=(7, 0))
+        ctk.CTkLabel(progress, text="LEARNING", text_color=ACCENT, font=("Segoe UI", 9, "bold")).pack(anchor="w", padx=20, pady=(20, 5))
+        ctk.CTkLabel(progress, text="Physics", text_color=TEXT, font=("Segoe UI", 13, "bold")).pack(anchor="w", padx=20)
+        ctk.CTkProgressBar(progress, progress_color=ACCENT, fg_color=BORDER).pack(fill="x", padx=20, pady=10)
+        ctk.CTkLabel(progress, text="Keep building your learning map.", text_color=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=20)
+
+    # ---------------------------- chat ----------------------------
+
+    def show_chat(self, initial=""):
+        self.current_page = "chat"
+        self.clear()
+        self.header("Ask Atlas", "Let's figure it out.", "Atlas can use your memory, goals and indexed books when relevant.")
+
+        chat = self.surface(self.main, SURFACE, 20)
+        chat.pack(fill="both", expand=True, padx=46)
+        box = ctk.CTkTextbox(chat, fg_color="transparent", text_color=TEXT, font=("Segoe UI", 11), wrap="word")
+        box.pack(fill="both", expand=True, padx=18, pady=18)
+        box.insert("end", "ATLAS\n\nI'm here. What are we working on?\n")
+
+        row = ctk.CTkFrame(self.main, fg_color="transparent")
+        row.pack(fill="x", padx=46, pady=12)
+        entry = ctk.CTkEntry(row, placeholder_text="Message Atlas...", height=46, fg_color=SURFACE_2, border_color=BORDER, text_color=TEXT, corner_radius=14)
+        entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
+
+        def send(text=None):
+            text = (text if text is not None else entry.get()).strip()
             if not text:
                 return
-            chat.insert("end", f"\nYou\n{text}\n")
+            box.insert("end", f"\nYOU\n{text}\n")
             entry.delete(0, "end")
+            self.update_idletasks()
             try:
                 answer = process(text)
             except Exception as exc:
                 answer = f"I couldn't process that yet: {exc}"
-            chat.insert("end", f"\nAtlas\n{answer}\n")
-            chat.see("end")
+            box.insert("end", f"\nATLAS\n{answer}\n")
+            box.see("end")
 
-        entry.bind("<Return>", send)
-        ctk.CTkButton(row, text="＋", command=send, width=40, fg_color=self.colors["surface"],
-                      hover_color=self.colors["accent"], text_color=self.colors["text"]).pack(side="right")
-        ctk.CTkButton(row, text="🎙", width=40, fg_color=self.colors["accent"],
-                      hover_color=self.colors["accent2"], text_color=self.colors["dark"]).pack(side="right", padx=5)
+        entry.bind("<Return>", lambda _e: send())
+        ctk.CTkButton(row, text="Send", command=send, width=88, height=46, fg_color=ACCENT, hover_color=ACCENT_HOVER, text_color=BG, corner_radius=14).pack()
+        if initial:
+            self.after(100, lambda: send(initial))
+
+    # ---------------------------- library ----------------------------
 
     def show_library(self):
+        self.current_page = "library"
         self.clear()
-        self.heading("My Library", "CBSE core • Classes 9–12")
-        ctk.CTkButton(self.main, text="＋ Add Book", command=self.add_book,
-                      fg_color=self.colors["accent"], hover_color=self.colors["accent2"],
-                      text_color=self.colors["dark"], height=34).pack(anchor="w", padx=38, pady=(0, 13))
+        self.header("NCERT Library", "Your study shelf.", "Core Classes 9–12 are ready for indexed textbooks. Add authorized PDFs from your computer.")
+
+        toolbar = ctk.CTkFrame(self.main, fg_color="transparent")
+        toolbar.pack(fill="x", padx=46, pady=(0, 14))
+        ctk.CTkButton(toolbar, text="＋ Add PDF", command=self.add_book, height=38, fg_color=ACCENT, hover_color=ACCENT_HOVER, text_color=BG, corner_radius=12).pack(side="left")
+        ctk.CTkLabel(toolbar, text="  Searchable text • page-aware indexing", text_color=MUTED, font=("Segoe UI", 9)).pack(side="left", padx=12)
+
         grid = ctk.CTkFrame(self.main, fg_color="transparent")
-        grid.pack(fill="both", expand=True, padx=38)
-        subjects = ["Science", "Mathematics", "Social Science", "English", "Physics", "Chemistry", "Biology", "Computer Science"]
-        for i, subject in enumerate(subjects):
-            level = "Classes 9–12"
-            self.card(f"📖 {subject}", f"{level}\nPDF indexed • Searchable\nRead every indexed word", grid, compact=True).grid(
-                row=i // 4, column=i % 4, sticky="nsew", padx=5, pady=5)
-        for c in range(4): grid.grid_columnconfigure(c, weight=1)
-        for r in range(2): grid.grid_rowconfigure(r, weight=1)
+        grid.pack(fill="both", expand=True, padx=46, pady=(0, 30))
+        for col in range(4):
+            grid.grid_columnconfigure(col, weight=1)
+        for row in range(3):
+            grid.grid_rowconfigure(row, weight=1)
+
+        subjects = [
+            ("09", "Science", "Physics • Chemistry • Biology"),
+            ("09", "Mathematics", "NCERT Mathematics"),
+            ("10", "Science", "Physics • Chemistry • Biology"),
+            ("10", "Mathematics", "NCERT Mathematics"),
+            ("11", "Physics", "Core Physics"),
+            ("11", "Chemistry", "Core Chemistry"),
+            ("11", "Mathematics", "Core Mathematics"),
+            ("12", "Physics", "Core Physics"),
+            ("12", "Chemistry", "Core Chemistry"),
+            ("12", "Mathematics", "Core Mathematics"),
+            ("12", "Biology", "Core Biology"),
+            ("09–12", "Your PDFs", "Add your own authorized books"),
+        ]
+        for i, (grade, subject, detail) in enumerate(subjects):
+            card = self.surface(grid, SURFACE, 16)
+            card.grid(row=i // 4, column=i % 4, sticky="nsew", padx=5, pady=5)
+            ctk.CTkLabel(card, text=f"CLASS {grade}", text_color=ACCENT, font=("Segoe UI", 8, "bold")).pack(anchor="w", padx=16, pady=(16, 6))
+            ctk.CTkLabel(card, text=subject, text_color=TEXT, font=("Georgia", 15, "bold")).pack(anchor="w", padx=16)
+            ctk.CTkLabel(card, text=detail, text_color=MUTED, wraplength=190, justify="left", font=("Segoe UI", 9)).pack(anchor="w", padx=16, pady=(6, 15))
 
     def add_book(self):
-        path = filedialog.askopenfilename(title="Choose an authorized textbook PDF",
-                                          filetypes=[("PDF files", "*.pdf")])
+        path = filedialog.askopenfilename(title="Choose an authorized textbook PDF", filetypes=[("PDF files", "*.pdf")])
         if not path:
             return
         level = simpledialog.askinteger("Class", "Class (9–12):", minvalue=9, maxvalue=12, parent=self)
@@ -214,45 +301,81 @@ class AtlasGUI(ctk.CTk):
         except Exception as exc:
             messagebox.showerror("Import failed", str(exc))
 
+    # ---------------------------- memory ----------------------------
+
     def show_memory(self):
-        self.clear(); self.heading("Memory", "Everything Atlas learns should remain under your control.")
-        for title, body in [
-            ("Things I Know", "Name • interests • study context"),
-            ("Important Memories", "Important conversations and saved facts"),
-            ("Learning History", "What you studied, when, and what needs revision"),
-            ("Preferences", "How you prefer Atlas to communicate and teach")
-        ]:
-            self.card(title, body).pack(fill="x", padx=38, pady=5)
+        self.clear()
+        self.header("Memory", "What Atlas knows.", "Memory is separated from the conversation itself so it can be inspected and controlled.")
+        grid = ctk.CTkFrame(self.main, fg_color="transparent")
+        grid.pack(fill="both", expand=True, padx=46, pady=(0, 30))
+        grid.grid_columnconfigure(0, weight=1); grid.grid_columnconfigure(1, weight=1)
+        cards = [
+            ("IDENTITY", "Name\nAshish"),
+            ("IMPORTANT", "I am building Atlas Student."),
+            ("PREFERENCES", "Communication and learning preferences grow over time."),
+            ("LEARNING", "Topics studied, progress signals and revision needs."),
+        ]
+        for i, (title, body) in enumerate(cards):
+            card = self.surface(grid, SURFACE, 18)
+            card.grid(row=i // 2, column=i % 2, sticky="nsew", padx=6, pady=6)
+            ctk.CTkLabel(card, text=title, text_color=ACCENT, font=("Segoe UI", 9, "bold")).pack(anchor="w", padx=22, pady=(22, 8))
+            ctk.CTkLabel(card, text=body, text_color=TEXT, justify="left", wraplength=420, font=("Segoe UI", 12)).pack(anchor="w", padx=22, pady=(0, 22))
+        grid.grid_rowconfigure(0, weight=1); grid.grid_rowconfigure(1, weight=1)
+
+    # ---------------------------- goals ----------------------------
 
     def show_goals(self):
-        self.clear(); self.heading("Goals", "Goals should grow from your conversations with Atlas.")
-        self.card("Keep building Atlas Student", "Active • Long-term project").pack(fill="x", padx=38, pady=5)
-        self.card("Prepare for your next exam", "Atlas can turn your available time and syllabus into a realistic plan.").pack(fill="x", padx=38, pady=5)
+        self.clear()
+        self.header("Goals", "Direction, not pressure.", "Atlas can turn conversations into goals and keep them connected to your learning.")
+        for title, body, status in [
+            ("Build Atlas Student", "Continue the core AI, memory and student-learning systems.", "ACTIVE"),
+            ("Strengthen Physics", "Build a stronger concept map through NCERT study and revision.", "ACTIVE"),
+        ]:
+            card = self.surface(self.main, SURFACE, 18)
+            card.pack(fill="x", padx=46, pady=6)
+            ctk.CTkLabel(card, text=status, text_color=SUCCESS, font=("Segoe UI", 8, "bold")).pack(anchor="w", padx=22, pady=(18, 4))
+            ctk.CTkLabel(card, text=title, text_color=TEXT, font=("Georgia", 18, "bold")).pack(anchor="w", padx=22)
+            ctk.CTkLabel(card, text=body, text_color=MUTED, font=("Segoe UI", 10)).pack(anchor="w", padx=22, pady=(4, 18))
+
+    # ---------------------------- progress ----------------------------
 
     def show_progress(self):
-        self.clear(); self.heading("Learning Progress", "A map of what you know and what needs attention.")
-        row = ctk.CTkFrame(self.main, fg_color="transparent"); row.pack(fill="both", expand=True, padx=38)
-        left = self.card("Strengths", "Physics                 60%\nThermodynamics          60%\nWaves                    20%\n\nConcepts needing revision  30%", row)
-        left.pack(side="left", fill="both", expand=True, padx=(0, 8))
-        right = self.card("Examples", "• Thermodynamics\n  Introduction → studied\n  Heat transfer → needs review\n\n• Recommended topics\n  Based on recent learning", row)
-        right.pack(side="left", fill="both", expand=True, padx=(8, 0))
+        self.clear()
+        self.header("Progress", "Your learning map.", "Progress should come from what Atlas actually sees you learn and practice.")
+        card = self.surface(self.main, SURFACE, 20)
+        card.pack(fill="both", expand=True, padx=46, pady=(0, 30))
+        data = [("Physics", 0.60), ("Thermodynamics", 0.60), ("Waves", 0.20), ("Concept review", 0.30)]
+        for name, value in data:
+            row = ctk.CTkFrame(card, fg_color="transparent")
+            row.pack(fill="x", padx=28, pady=(20, 0))
+            ctk.CTkLabel(row, text=name, text_color=TEXT, font=("Segoe UI", 11, "bold")).pack(side="left")
+            ctk.CTkLabel(row, text=f"{int(value * 100)}%", text_color=MUTED, font=("Segoe UI", 10)).pack(side="right")
+            bar = ctk.CTkProgressBar(card, height=10, progress_color=ACCENT, fg_color=BORDER)
+            bar.pack(fill="x", padx=28, pady=(8, 0))
+            bar.set(value)
+
+    # ---------------------------- voice ----------------------------
 
     def show_voice(self):
-        self.clear(); self.heading("Voice", "Hands-free Atlas interaction")
-        panel = ctk.CTkFrame(self.main, fg_color=self.colors["panel"], corner_radius=16,
-                             border_width=1, border_color=self.colors["border"])
-        panel.pack(fill="both", expand=True, padx=38, pady=5)
-        ctk.CTkLabel(panel, text="〰  ATLAS  〰", text_color=self.colors["accent"],
-                     font=("Georgia", 28, "bold")).pack(pady=(100, 15))
-        ctk.CTkLabel(panel, text="Listening...", text_color=self.colors["dark"],
-                     font=("Segoe UI", 13)).pack(pady=4)
-        ctk.CTkLabel(panel, text="Atlas is thinking...", text_color=self.colors["muted"],
-                     font=("Segoe UI", 10)).pack()
+        self.clear()
+        self.header("Voice", "Listen. Think. Respond.", "A dedicated space for Atlas voice interaction.")
+        panel = self.surface(self.main, SURFACE, 24)
+        panel.pack(fill="both", expand=True, padx=46, pady=(0, 30))
+        ctk.CTkLabel(panel, text="A", text_color=ACCENT, font=("Georgia", 80, "bold")).pack(pady=(100, 5))
+        ctk.CTkLabel(panel, text="ATLAS", text_color=TEXT, font=("Segoe UI", 16, "bold")).pack()
+        ctk.CTkLabel(panel, text="Voice engine ready", text_color=SUCCESS, font=("Segoe UI", 10)).pack(pady=8)
+        ctk.CTkButton(panel, text="Start listening", height=44, width=170, fg_color=ACCENT, hover_color=ACCENT_HOVER, text_color=BG, corner_radius=14).pack(pady=18)
+
+    # ---------------------------- settings ----------------------------
 
     def show_settings(self):
-        self.clear(); self.heading("Settings", "Control your Atlas experience.")
-        self.card("Desktop appearance", "Use the Default / Black / White controls at the top right.").pack(fill="x", padx=38, pady=5)
-        self.card("Privacy", "Atlas should keep personal memory under user control.").pack(fill="x", padx=38, pady=5)
+        self.clear()
+        self.header("Settings", "Make Atlas yours.", "Controls for the interface and future personalization options.")
+        card = self.surface(self.main, SURFACE, 20)
+        card.pack(fill="x", padx=46, pady=(0, 12))
+        ctk.CTkLabel(card, text="Interface", text_color=TEXT, font=("Georgia", 17, "bold")).pack(anchor="w", padx=24, pady=(22, 4))
+        ctk.CTkLabel(card, text="Orbit UI • Midnight mode", text_color=MUTED, font=("Segoe UI", 10)).pack(anchor="w", padx=24, pady=(0, 18))
+        ctk.CTkLabel(card, text="The new Atlas interface is intentionally independent from the previous desktop mockup.", text_color=MUTED, wraplength=700, justify="left", font=("Segoe UI", 10)).pack(anchor="w", padx=24, pady=(0, 22))
 
 
 if __name__ == "__main__":
