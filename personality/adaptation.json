@@ -1,0 +1,10 @@
+{
+    "preferences": {
+        "verbosity": {"value": "balanced", "confidence": 0.0, "source": "none", "last_confirmed": null, "context": "general"},
+        "technical_depth": {"value": "adaptive", "confidence": 0.0, "source": "none", "last_confirmed": null, "context": "general"},
+        "humor": {"value": "adaptive", "confidence": 0.0, "source": "none", "last_confirmed": null, "context": "general"},
+        "language": {"value": "adaptive", "confidence": 0.0, "source": "none", "last_confirmed": null, "context": "general"},
+        "examples": {"value": "adaptive", "confidence": 0.0, "source": "none", "last_confirmed": null, "context": "learning"},
+        "step_by_step": {"value": "adaptive", "confidence": 0.0, "source": "none", "last_confirmed": null, "context": "learning"}
+    }
+}
