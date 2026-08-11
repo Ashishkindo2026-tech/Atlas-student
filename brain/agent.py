@@ -131,6 +131,11 @@ class AtlasAgent:
 
     def ask_llm(self, user):
         context = build_context(user)
+        reasoning_plan = self.reasoning.plan(user, context)
+        if reasoning_plan.missing:
+            if reasoning_plan.intent == "study_planning" and "subject" in reasoning_plan.missing:
+                return self._reply("I can make the 2-hour plan, but I need one important detail first: what subject is the exam for?")
+
         reasoning = self.reasoning.prompt_context(user, context)
         prompt = f"""You are Atlas Student, a local-first personal AI for a student.
 
@@ -167,8 +172,9 @@ SYSTEM RULES:
 8. Do not claim to have used a tool unless the application actually used it.
 9. For uncertain facts, say you don't know.
 10. Use the reasoning layer as a planning scaffold, then produce a direct, useful response.
-11. If constraints are missing, state the missing information instead of inventing it.
-12. For plans, verify that the proposed actions fit the user's stated time and constraints.
+11. If constraints are missing, ask for the missing information instead of inventing it.
+12. For plans, verify that proposed actions fit the user's stated time and constraints.
+13. A stored preference such as favorite_subject is not evidence of the subject of the current exam.
 """
         return self.llm.ask(prompt)
 
