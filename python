@@ -1,0 +1,9 @@
+[DEBUG] Atlas starting...
+[DEBUG] Recalling: name
+[DEBUG] Loading memory...
+[DEBUG] Memory loaded successfully.
+[DEBUG] Data: {'name': 'ashish'}
+[DEBUG] Found: ashish
+Welcome back, ashish!
+[DEBUG] Loading LLM...
+[DEBUG] LLM loaded.
