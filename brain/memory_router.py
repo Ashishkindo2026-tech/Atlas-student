@@ -11,7 +11,7 @@ class MemoryRouter:
         text = user_input.strip()
         lower = text.lower()
 
-        for prefix in ["remember that ", "please remember ", "don't forget that ", "do not forget that "]:
+        for prefix in ["remember that ", "please remember ", "don't forget that ", "do not forget that ", "remember "]:
             if lower.startswith(prefix):
                 value = text[len(prefix):].strip()
                 if value:
@@ -32,7 +32,7 @@ class MemoryRouter:
         return {"type": "conversation", "value": None}
 
     def save_memory(self, memory_text):
-        self.long_term.add_important_memory(memory_text)
+        return self.long_term.add_important_memory(memory_text)
 
     def forget_memory(self, query):
         query_words = query.lower().split()
