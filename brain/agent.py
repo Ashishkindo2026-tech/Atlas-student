@@ -5,12 +5,14 @@ from project.project_manager import list_projects
 from tools.system_tools import get_time, get_date
 from brain.core import build_context
 from llm.ollama_client import Ollama_Client
+from personality.personality import Personality
 
 
 class AtlasAgent:
     def __init__(self):
         self.llm = Ollama_Client()
         self.memory_router = MemoryRouter()
+        self.personality = Personality()
         self.pending_memory = None
 
     def process(self, user):
@@ -32,11 +34,27 @@ class AtlasAgent:
                 add_message("assistant", response)
                 return response
 
+        # Personality controls are separate from factual long-term memory.
+        if user_lower in [
+            "what have you learned about how i like you to respond",
+            "what have you learned about my preferences",
+            "show my personality preferences",
+            "show adaptation",
+        ]:
+            response = self.personality.explain()
+            add_message("assistant", response)
+            return response
+
+        if user_lower in ["reset personality", "reset my preferences", "forget my response preferences"]:
+            self.personality.reset()
+            response = "Okay. I reset my learned response preferences."
+            add_message("assistant", response)
+            return response
+
         memory_result = self.memory_router.route(user)
         memory_type = memory_result["type"]
         print(f"[DEBUG] Memory type: {memory_type}")
 
-        # MemoryRouter returns memory_request for explicit remember commands.
         if memory_type == "memory_request":
             self.pending_memory = memory_result["value"]
             response = (
@@ -147,8 +165,16 @@ class AtlasAgent:
 
     def ask_llm(self, user):
         context = build_context(user)
+        personality = self.personality.get()
+        adaptation = self.personality.prompt_block(user)
+
         prompt = f"""
 You are Atlas, a local AI assistant.
+
+PERSONALITY CORE:
+{personality}
+
+{adaptation}
 
 USER PROFILE:
 {context["name"]}
@@ -171,9 +197,16 @@ MEMORY RULES:
 6. Do not combine unrelated memories.
 7. If approved memories do not contain enough information, say that you don't know.
 8. Never claim to remember something unless the user explicitly approved saving it.
-9. Answer the current question directly.
 
-Keep the answer concise and appropriate for a student.
+PERSONALITY RULES:
+1. Adapt tone, verbosity, language, humor, explanation depth, examples, and step-by-step style when reliable preferences exist.
+2. Treat learned preferences as soft guidance, not permanent facts.
+3. Prefer the current request when it conflicts with an older preference.
+4. Do not infer sensitive traits, emotions, health, beliefs, identity, or other private characteristics from writing style.
+5. Never change Atlas's core values: honesty, privacy, safety, respect, user control, and no manipulation.
+6. Do not claim to know why a preference exists unless the user explicitly told you.
+
+Answer the current question directly and naturally.
 """
         return self.llm.ask(prompt)
 
