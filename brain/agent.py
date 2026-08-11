@@ -10,7 +10,10 @@ from goals.goal_manager import GoalManager
 from user.knowledge import UserKnowledge
 from brain.reasoning_engine import ReasoningEngine
 from education.agent_bridge import education_context
+from education.retrieval import retrieve
+from education.study_planner import build_study_plan, format_plan
 from student.progress_manager import ProgressManager
+import re
 
 
 class AtlasAgent:
@@ -59,7 +62,6 @@ class AtlasAgent:
             return self._reply("Okay. I reset the learning-progress record.")
 
         if clean.startswith("study session "):
-            # Syntax: study session <subject> <minutes> [topic]
             parts = text[len("study session "):].strip().split()
             if len(parts) >= 2:
                 try:
@@ -73,7 +75,6 @@ class AtlasAgent:
             return self._reply("Use: study session <subject> <minutes> [topic]")
 
         if clean.startswith("set mastery "):
-            # Syntax: set mastery <subject> | <concept> | <0-100>
             raw = text[len("set mastery "):].strip().split("|")
             if len(raw) == 3:
                 try:
@@ -162,12 +163,37 @@ class AtlasAgent:
 
         return self._reply(self.ask_llm(text))
 
+    @staticmethod
+    def _study_request(user: str):
+        """Extract only explicit subject/time signals; never guess a subject."""
+        match = re.search(r"(?:have|got|only|just)\s+(\d+(?:\.\d+)?)\s*(minutes?|mins?|hours?|hrs?)", user.lower())
+        if not match:
+            match = re.search(r"(\d+(?:\.\d+)?)\s*(minutes?|mins?|hours?|hrs?)", user.lower())
+        if not match:
+            return None
+        amount = float(match.group(1))
+        unit = match.group(2)
+        minutes = int(amount * 60) if unit.startswith(("hour", "hr")) else int(amount)
+        subjects = ["physics", "chemistry", "mathematics", "math", "biology", "english", "science", "history", "geography", "computer science"]
+        subject = next((s for s in subjects if s in user.lower()), None)
+        if subject == "math": subject = "mathematics"
+        return subject, minutes
+
     def ask_llm(self, user):
         context = build_context(user)
         reasoning_plan = self.reasoning.plan(user, context)
+        study_request = self._study_request(user)
         if reasoning_plan.missing:
             if reasoning_plan.intent == "study_planning" and "subject" in reasoning_plan.missing:
-                return self._reply("I can make the 2-hour plan, but I need one important detail first: what subject is the exam for?")
+                return self._reply("I can make the plan, but I need one important detail first: what subject is the exam for?")
+
+        if study_request:
+            subject, minutes = study_request
+            if subject and minutes > 0:
+                retrieved = retrieve(subject, limit=12)
+                plan = build_study_plan(subject.title(), minutes, retrieved, self.progress.data())
+                if plan:
+                    return self._reply(format_plan(subject.title(), minutes, plan))
 
         reasoning = self.reasoning.prompt_context(user, context)
         education = education_context(user)
@@ -218,6 +244,7 @@ SYSTEM RULES:
 14. When education retrieval is present, use it as the primary source for NCERT/CBSE-specific questions and preserve page/source references when useful.
 15. Never claim that content is from an NCERT/CBSE book when no matching indexed education source was retrieved.
 16. Treat learning progress as evidence only when explicitly recorded; never manufacture mastery scores.
+17. For explicit study-planning requests, use the deterministic study planner when indexed material is available rather than inventing chapters.
 """
         return self.llm.ask(prompt)
 
