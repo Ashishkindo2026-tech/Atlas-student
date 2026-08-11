@@ -64,9 +64,10 @@ class StudentJourneyTests(unittest.TestCase):
 
                 self.assertTrue(result.strip())
                 self.assertEqual(len(fake.calls), 1)
-                self.assertIn("Atlas Student", fake.calls[0])
-                self.assertIn("Newton's third law", fake.calls[0].lower())
-                self.assertIn("CURRENT USER MESSAGE", fake.calls[0])
+                prompt = fake.calls[0].lower()
+                self.assertIn("atlas student", prompt)
+                self.assertIn("newton's third law", prompt)
+                self.assertIn("current user message", prompt)
 
 
 if __name__ == "__main__":
