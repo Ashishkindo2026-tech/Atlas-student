@@ -9,11 +9,16 @@ class MemoryRouter:
 
     def route(self, user_input):
         text = user_input.strip()
-        lower = text.lower()
+        lower = text.lower().rstrip("?!.")
 
         if lower in {"forget everything", "forget all", "delete all memories"}:
             return {"type": "forget_all", "value": None}
-        if lower in {"show memory", "show my memory", "what do you remember"}:
+        if (
+            lower in {"show memory", "show my memory", "what do you remember"}
+            or lower.startswith("what do you remember about ")
+            or lower.startswith("what do you remember of ")
+            or lower.startswith("what do you know about ")
+        ):
             return {"type": "show_memory", "value": None}
         if lower in {"show archive", "show archived memories", "what is archived"}:
             return {"type": "show_archive", "value": None}
