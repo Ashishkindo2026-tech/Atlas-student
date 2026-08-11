@@ -9,6 +9,7 @@ from personality.personality import Personality
 from goals.goal_manager import GoalManager
 from user.knowledge import UserKnowledge
 from brain.reasoning_engine import ReasoningEngine
+from education.agent_bridge import education_context
 
 
 class AtlasAgent:
@@ -137,6 +138,7 @@ class AtlasAgent:
                 return self._reply("I can make the 2-hour plan, but I need one important detail first: what subject is the exam for?")
 
         reasoning = self.reasoning.prompt_context(user, context)
+        education = education_context(user)
         prompt = f"""You are Atlas Student, a local-first personal AI for a student.
 
 ATLAS PERSONALITY CORE:
@@ -154,6 +156,9 @@ AVAILABLE LOCAL TOOLS:
 {context['tools']}
 RECENT CONVERSATION:
 {context['history']}
+
+CBSE/NCERT EDUCATION RETRIEVAL:
+{education}
 
 REASONING LAYER:
 {reasoning}
@@ -175,6 +180,8 @@ SYSTEM RULES:
 11. If constraints are missing, ask for the missing information instead of inventing it.
 12. For plans, verify that proposed actions fit the user's stated time and constraints.
 13. A stored preference such as favorite_subject is not evidence of the subject of the current exam.
+14. When education retrieval is present, use it as the primary source for NCERT/CBSE-specific questions and preserve page/source references when useful.
+15. Never claim that content is from an NCERT/CBSE book when no matching indexed education source was retrieved.
 """
         return self.llm.ask(prompt)
 
