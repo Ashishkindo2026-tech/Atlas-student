@@ -1,6 +1,15 @@
-"""Document primitives for searchable educational material."""
+"""Document primitives and deterministic word-level retrieval for Atlas Student."""
 from dataclasses import dataclass
 from typing import Optional
+import re
+
+
+_TOKEN_RE = re.compile(r"[\w]+(?:['’-][\w]+)?", re.UNICODE)
+
+
+def tokenize(text: str) -> list[str]:
+    """Normalize text into searchable words while preserving apostrophes."""
+    return [token.lower().replace("’", "'") for token in _TOKEN_RE.findall(text)]
 
 
 @dataclass(frozen=True)
@@ -10,6 +19,8 @@ class DocumentChunk:
     chapter: Optional[str] = None
     section: Optional[str] = None
     source: str = "unknown"
+    class_level: Optional[int] = None
+    subject: Optional[str] = None
 
     def searchable_text(self) -> str:
         return self.text
@@ -22,23 +33,56 @@ class SearchResult:
 
 
 class DocumentIndex:
-    """Small deterministic index foundation; replace with vector/full-text backend later."""
+    """Small deterministic full-text index with class/subject filtering.
+
+    It is intentionally dependency-free: Atlas can search an indexed NCERT
+    library on a modest local machine before a vector backend is introduced.
+    """
 
     def __init__(self):
-        self.chunks = []
+        self.chunks: list[DocumentChunk] = []
+        self._tokens: list[set[str]] = []
 
     def add(self, chunk: DocumentChunk) -> None:
-        if chunk.text.strip():
-            self.chunks.append(chunk)
+        if not chunk.text.strip():
+            return
+        self.chunks.append(chunk)
+        self._tokens.append(set(tokenize(chunk.searchable_text())))
 
-    def search(self, query: str, limit: int = 5):
-        terms = {t.lower() for t in query.split() if t.strip()}
-        if not terms:
+    def search(
+        self,
+        query: str,
+        limit: int = 5,
+        class_level: Optional[int] = None,
+        subject: Optional[str] = None,
+    ) -> list[SearchResult]:
+        terms = set(tokenize(query))
+        if not terms or limit <= 0:
             return []
-        scored = []
-        for chunk in self.chunks:
-            words = set(chunk.text.lower().split())
-            score = sum(term in words for term in terms) / len(terms)
-            if score > 0:
-                scored.append(SearchResult(chunk, score))
-        return sorted(scored, key=lambda r: r.score, reverse=True)[:limit]
+
+        wanted_subject = subject.strip().lower() if subject else None
+        scored: list[SearchResult] = []
+        for chunk, words in zip(self.chunks, self._tokens):
+            if class_level is not None and chunk.class_level not in (None, class_level):
+                continue
+            if wanted_subject and chunk.subject and chunk.subject.lower() != wanted_subject:
+                continue
+
+            matched = terms & words
+            if not matched:
+                continue
+
+            # Recall all matching words, then reward phrase/order and metadata.
+            score = len(matched) / len(terms)
+            normalized_text = " ".join(tokenize(chunk.text))
+            normalized_query = " ".join(tokenize(query))
+            if normalized_query and normalized_query in normalized_text:
+                score += 0.35
+            if chunk.chapter and any(term in tokenize(chunk.chapter) for term in terms):
+                score += 0.10
+            if chunk.section and any(term in tokenize(chunk.section) for term in terms):
+                score += 0.05
+            scored.append(SearchResult(chunk, score))
+
+        scored.sort(key=lambda result: (-result.score, result.chunk.page or 0))
+        return scored[:limit]
