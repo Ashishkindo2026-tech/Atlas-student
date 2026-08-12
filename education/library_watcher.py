@@ -7,8 +7,10 @@ compact local index.
 """
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
-from .ingest import ingest_pdf, LIBRARY_ROOT, list_indexed_books
+
+from .ingest import ingest_pdf, LIBRARY_ROOT, list_indexed_books, remove_indexed_book
 
 CORE_ROOT = LIBRARY_ROOT / "core"
 USER_ROOT = Path(__file__).resolve().parent.parent / "ncert_books"
@@ -49,25 +51,54 @@ def scan_library(root: str | Path | None = None) -> list[tuple[Path, int, str]]:
     return _scan_root(scan_root)
 
 
-def scan_and_ingest(root: str | Path | None = None) -> list[dict]:
-    """Detect and ingest newly dropped core PDFs.
+def _fingerprint(path: Path) -> str:
+    """Return a stable content fingerprint for incremental indexing."""
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
 
-    Already-indexed PDFs are skipped using their canonical original path. This
-    makes repeated startup scans safe and prevents duplicate index entries.
+
+def _matching_books(path: Path) -> list[dict]:
+    canonical = str(path.resolve())
+    return [
+        book for book in list_indexed_books()
+        if str(Path(book.get("original_path", "")).expanduser().resolve()) == canonical
+    ]
+
+
+def scan_and_ingest(root: str | Path | None = None) -> list[dict]:
+    """Detect new/changed PDFs and incrementally update their local indexes.
+
+    New files are indexed, unchanged files are skipped, and changed files are
+    re-indexed. The original PDF is never modified or deleted.
     """
-    existing = {
-        str(Path(book.get("original_path", "")).expanduser().resolve())
-        for book in list_indexed_books()
-        if book.get("original_path")
-    }
     results = []
     for pdf, class_level, subject in scan_library(root):
-        canonical = str(pdf.resolve())
-        if canonical in existing:
+        canonical = pdf.resolve()
+        fingerprint = _fingerprint(canonical)
+        existing = _matching_books(canonical)
+
+        # Fast path: content is unchanged, so startup scans do no work.
+        if any(book.get("fingerprint") == fingerprint for book in existing):
             continue
+
+        # Remove stale indexes for this original path before indexing the new
+        # content. This also prevents old versions from remaining searchable.
+        for book in existing:
+            remove_indexed_book(book["id"])
+
         try:
             metadata = ingest_pdf(pdf, class_level, subject)
-            existing.add(canonical)
+            # Persist the fingerprint in the manifest through the metadata
+            # update API exposed by ingest.py's manifest-backed storage.
+            from . import ingest as ingest_module
+            manifest = ingest_module._load_manifest()
+            manifest["books"][metadata["id"]]["fingerprint"] = fingerprint
+            ingest_module._save_manifest(manifest)
+            metadata["fingerprint"] = fingerprint
+            metadata["action"] = "indexed" if not existing else "reindexed"
             results.append(metadata)
         except Exception as exc:
             results.append({"path": str(pdf), "error": str(exc)})
