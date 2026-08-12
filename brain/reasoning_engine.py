@@ -18,7 +18,7 @@ class ReasoningEngine:
     def understand(self, text: str) -> Dict[str, str]:
         lower = text.lower()
         intent = "general"
-        if any(w in lower for w in ("exam", "test", "revision", "study")):
+        if any(w in lower for w in ("exam", "test", "revision", "revise", "study", "studying", "prepare", "preparing")):
             intent = "study_planning"
         elif any(w in lower for w in ("plan", "schedule", "finish", "deadline")):
             intent = "planning"
@@ -41,7 +41,6 @@ class ReasoningEngine:
         intent = understood.pop("intent")
         missing = []
 
-        # A study plan is not safe to specialize until the subject is actually known.
         if intent == "study_planning":
             if not self._subject_is_explicit(text):
                 missing.append("subject")
