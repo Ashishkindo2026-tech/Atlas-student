@@ -68,6 +68,37 @@ def _matching_books(path: Path) -> list[dict]:
     ]
 
 
+def _record_fingerprint(books: list[dict], fingerprint: str) -> None:
+    """Backfill fingerprints for legacy indexes without forcing a rebuild."""
+    if not books:
+        return
+    from . import ingest as ingest_module
+
+    manifest = ingest_module._load_manifest()
+    changed = False
+    for book in books:
+        book_id = book.get("id")
+        if book_id and book_id in manifest.get("books", {}) and not manifest["books"][book_id].get("fingerprint"):
+            manifest["books"][book_id]["fingerprint"] = fingerprint
+            changed = True
+    if changed:
+        ingest_module._save_manifest(manifest)
+
+
+def _store_fingerprint(metadata: dict, fingerprint: str) -> None:
+    """Persist a fingerprint without changing the public ingestion result."""
+    book_id = metadata.get("id")
+    if not book_id:
+        return
+    from . import ingest as ingest_module
+
+    manifest = ingest_module._load_manifest()
+    if book_id not in manifest.get("books", {}):
+        return
+    manifest["books"][book_id]["fingerprint"] = fingerprint
+    ingest_module._save_manifest(manifest)
+
+
 def scan_and_ingest(root: str | Path | None = None) -> list[dict]:
     """Detect new/changed PDFs and incrementally update their local indexes.
 
@@ -80,25 +111,25 @@ def scan_and_ingest(root: str | Path | None = None) -> list[dict]:
         fingerprint = _fingerprint(canonical)
         existing = _matching_books(canonical)
 
-        # Fast path: content is unchanged, so startup scans do no work.
-        if any(book.get("fingerprint") == fingerprint for book in existing):
-            continue
+        if existing:
+            if any(book.get("fingerprint") == fingerprint for book in existing):
+                continue
 
-        # Remove stale indexes for this original path before indexing the new
-        # content. This also prevents old versions from remaining searchable.
-        for book in existing:
-            remove_indexed_book(book["id"])
+            # Legacy indexes did not store fingerprints. Keep the existing
+            # index on first scan and backfill its fingerprint so later edits
+            # can be detected without forcing an unnecessary rebuild.
+            if all(not book.get("fingerprint") for book in existing):
+                _record_fingerprint(existing, fingerprint)
+                continue
+
+            # A fingerprint mismatch means the original PDF changed.
+            for book in existing:
+                remove_indexed_book(book["id"])
 
         try:
             metadata = ingest_pdf(pdf, class_level, subject)
-            # Persist the fingerprint in the manifest through the metadata
-            # update API exposed by ingest.py's manifest-backed storage.
-            from . import ingest as ingest_module
-            manifest = ingest_module._load_manifest()
-            manifest["books"][metadata["id"]]["fingerprint"] = fingerprint
-            ingest_module._save_manifest(manifest)
-            metadata["fingerprint"] = fingerprint
-            metadata["action"] = "indexed" if not existing else "reindexed"
+            if isinstance(metadata, dict):
+                _store_fingerprint(metadata, fingerprint)
             results.append(metadata)
         except Exception as exc:
             results.append({"path": str(pdf), "error": str(exc)})
