@@ -88,8 +88,11 @@ class ReasoningEngine:
     @staticmethod
     def _topic_is_explicit(text: str) -> bool:
         lower = text.lower()
+        # Only treat a phrase as a topic when it follows a study action directly.
+        # In particular, "study for tomorrow's exam" must not turn "for tomorrow"
+        # into a fake topic. This keeps missing-subject detection conservative.
         patterns = (
-            r"\b(?:revise|revision|study|learn|explain|understand|practice|help me with)\s+(?:the\s+)?[a-z][a-z0-9' -]{2,80}",
+            r"\b(?:revise|revision|study|learn|explain|understand|practice|help me with)\s+(?!for\b|to\b)[a-z][a-z0-9' -]{2,80}",
             r"\b(?:chapter|ch\.?|topic|concept)\s*\d+[a-z0-9 -]*",
         )
         return any(re.search(pattern, lower) for pattern in patterns)
