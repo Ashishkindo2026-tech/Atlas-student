@@ -10,7 +10,7 @@ import hashlib
 import json
 import re
 from pathlib import Path
-from typing import Dict, Iterable, List
+from typing import Dict, List
 
 from .document import DocumentChunk
 
@@ -42,22 +42,58 @@ def _save_manifest(data: Dict) -> None:
     MANIFEST_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
-def extract_pdf_chunks(pdf_path: Path, source: str = "user-provided PDF") -> List[DocumentChunk]:
-    """Extract one chunk per page using PyMuPDF when installed.
+def _looks_like_heading(text: str) -> bool:
+    """Conservative chapter/section heading heuristic for ordinary PDFs."""
+    clean = " ".join(text.split())
+    if not clean or len(clean) > 120:
+        return False
+    return bool(re.match(
+        r"^(chapter\s+\d+|unit\s+\d+|lesson\s+\d+|\d+(?:\.\d+)*\s+[A-Z][A-Za-z0-9 :,'-]+)$",
+        clean,
+        flags=re.IGNORECASE,
+    ))
 
-    Keeping page boundaries makes exact retrieval and source citations possible.
-    """
+
+def extract_pdf_chunks(
+    pdf_path: Path,
+    source: str = "user-provided PDF",
+    class_level: int | None = None,
+    subject: str | None = None,
+) -> List[DocumentChunk]:
+    """Extract page chunks and attach conservative chapter/section metadata."""
     try:
         import fitz  # PyMuPDF
     except ImportError as exc:
         raise RuntimeError("PDF ingestion requires PyMuPDF. Install with: pip install pymupdf") from exc
 
     chunks: List[DocumentChunk] = []
+    current_chapter = None
+    current_section = None
     with fitz.open(pdf_path) as document:
         for page_number, page in enumerate(document, start=1):
             text = page.get_text("text").strip()
-            if text:
-                chunks.append(DocumentChunk(text=text, page=page_number, source=source))
+            if not text:
+                continue
+
+            lines = [line.strip() for line in text.splitlines() if line.strip()]
+            for line in lines[:12]:
+                if re.match(r"^(chapter\s+\d+|unit\s+\d+|lesson\s+\d+)", line, re.I):
+                    current_chapter = line
+                    current_section = None
+                    break
+                if _looks_like_heading(line):
+                    current_section = line
+                    break
+
+            chunks.append(DocumentChunk(
+                text=text,
+                page=page_number,
+                chapter=current_chapter,
+                section=current_section,
+                source=source,
+                class_level=class_level,
+                subject=subject,
+            ))
     return chunks
 
 
@@ -70,7 +106,12 @@ def ingest_pdf(pdf_path: str | Path, class_level: int, subject: str, title: str 
         raise ValueError("Core ingestion supports Classes 9-12")
 
     book_id = _book_id(path)
-    chunks = extract_pdf_chunks(path, source=f"{class_level}:{subject}")
+    chunks = extract_pdf_chunks(
+        path,
+        source=f"{class_level}:{subject}",
+        class_level=class_level,
+        subject=subject,
+    )
     book_dir = INDEX_ROOT / _safe_name(str(class_level)) / _safe_name(subject) / book_id
     book_dir.mkdir(parents=True, exist_ok=True)
 
@@ -83,6 +124,8 @@ def ingest_pdf(pdf_path: str | Path, class_level: int, subject: str, title: str 
                 "chapter": chunk.chapter,
                 "section": chunk.section,
                 "source": chunk.source,
+                "class_level": chunk.class_level,
+                "subject": chunk.subject,
             }, ensure_ascii=False) + "\n")
 
     metadata = {
