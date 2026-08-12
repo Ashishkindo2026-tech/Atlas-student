@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0b0f">
+  <title>Atlas Student</title>
+  <style>
+    :root { color-scheme: dark; --bg:#08090d; --panel:#11131a; --panel2:#171923; --text:#f5f7fb; --muted:#8f96a8; --line:#252938; --accent:#d7b56d; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; background:radial-gradient(circle at 50% -10%, #252018 0, var(--bg) 42%); color:var(--text); font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    .app { min-height:100vh; max-width:760px; margin:auto; display:flex; flex-direction:column; }
+    header { position:sticky; top:0; z-index:2; padding:18px 18px 14px; background:rgba(8,9,13,.86); backdrop-filter:blur(18px); border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; }
+    .brand { display:flex; gap:12px; align-items:center; }
+    .orb { width:42px; height:42px; border-radius:50%; border:1px solid #5f5137; background:radial-gradient(circle at 35% 30%, #f4dc9d, #8e7440 38%, #16130d 72%); box-shadow:0 0 26px rgba(215,181,109,.18); }
+    h1 { font-size:18px; margin:0; letter-spacing:.02em; } .sub { font-size:12px; color:var(--muted); margin-top:3px; }
+    #status { font-size:12px; color:var(--muted); }
+    #status.online { color:#b9c9a1; }
+    main { flex:1; padding:22px 16px 110px; }
+    .welcome { text-align:center; padding:38px 16px 22px; color:var(--muted); }
+    .welcome strong { display:block; color:var(--text); font-size:27px; margin-bottom:8px; }
+    .msg { display:flex; margin:13px 0; }
+    .msg.user { justify-content:flex-end; } .bubble { max-width:88%; padding:12px 14px; border-radius:18px; white-space:pre-wrap; line-height:1.45; font-size:15px; }
+    .assistant .bubble { background:var(--panel); border:1px solid var(--line); border-bottom-left-radius:6px; }
+    .user .bubble { background:#29261f; border:1px solid #514731; border-bottom-right-radius:6px; }
+    .composer { position:fixed; bottom:0; left:0; right:0; padding:12px max(12px, calc((100vw - 760px)/2 + 12px)); padding-bottom:max(12px, env(safe-area-inset-bottom)); background:linear-gradient(transparent, rgba(8,9,13,.98) 30%); }
+    form { display:flex; gap:8px; padding:8px; background:rgba(17,19,26,.94); border:1px solid var(--line); border-radius:22px; backdrop-filter:blur(18px); }
+    textarea { flex:1; resize:none; border:0; outline:0; background:transparent; color:var(--text); padding:10px 8px; min-height:42px; max-height:120px; font:inherit; }
+    button { align-self:flex-end; border:0; border-radius:16px; min-width:52px; min-height:42px; background:var(--accent); color:#17130a; font-weight:800; cursor:pointer; }
+    button:disabled { opacity:.45; cursor:wait; }
+    .typing { color:var(--muted); font-size:13px; padding:8px 4px; }
+  </style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand"><div class="orb"></div><div><h1>Atlas Student</h1><div class="sub">Your Atlas, on your phone</div></div></div>
+    <div id="status">Connecting…</div>
+  </header>
+  <main id="chat"><div class="welcome"><strong>What are we working on?</strong>Ask Atlas anything.</div></main>
+  <div class="composer">
+    <form id="form"><textarea id="input" rows="1" placeholder="Message Atlas…" autocomplete="off"></textarea><button id="send" type="submit">↑</button></form>
+  </div>
+</div>
+<script>
+  const chat = document.getElementById('chat');
+  const form = document.getElementById('form');
+  const input = document.getElementById('input');
+  const send = document.getElementById('send');
+  const status = document.getElementById('status');
+
+  function addMessage(role, text) {
+    const row = document.createElement('div');
+    row.className = `msg ${role}`;
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    bubble.textContent = text;
+    row.appendChild(bubble); chat.appendChild(row);
+    chat.scrollTop = chat.scrollHeight;
+    window.scrollTo({top: document.body.scrollHeight, behavior:'smooth'});
+  }
+
+  async function checkStatus() {
+    try { const r = await fetch('/api/status'); if (!r.ok) throw new Error(); const data = await r.json(); status.textContent = `● ${data.model}`; status.className='online'; }
+    catch { status.textContent = 'Offline'; status.className=''; }
+  }
+
+  input.addEventListener('input', () => { input.style.height='auto'; input.style.height=Math.min(input.scrollHeight,120)+'px'; });
+  input.addEventListener('keydown', e => { if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); } });
+
+  form.addEventListener('submit', async e => {
+    e.preventDefault(); const message=input.value.trim(); if(!message || send.disabled) return;
+    addMessage('user', message); input.value=''; input.style.height='auto'; send.disabled=true;
+    const typing=document.createElement('div'); typing.className='typing'; typing.textContent='Atlas is thinking…'; chat.appendChild(typing); chat.scrollTop=chat.scrollHeight;
+    try {
+      const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message})});
+      const data=await r.json(); if(!r.ok) throw new Error(data.detail || 'Request failed');
+      typing.remove(); addMessage('assistant', data.response);
+    } catch(err) { typing.remove(); addMessage('assistant', `I couldn't reach the Atlas brain: ${err.message}`); }
+    finally { send.disabled=false; input.focus(); }
+  });
+
+  checkStatus(); setInterval(checkStatus, 15000);
+</script>
+</body>
+</html>
