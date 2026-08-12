@@ -42,7 +42,9 @@ class ReasoningEngine:
         missing = []
 
         if intent == "study_planning":
-            if not self._subject_is_explicit(text):
+            # A named subject is ideal, but a concrete topic can also be enough
+            # to hand the request to the LLM rather than blocking the session.
+            if not self._subject_is_explicit(text) and not self._topic_is_explicit(text):
                 missing.append("subject")
             steps = [
                 "Identify the subject and highest-priority material.",
@@ -80,6 +82,15 @@ class ReasoningEngine:
             r"\b(?:for|in|of)\s+(?:my\s+)?(?:math|maths|mathematics|physics|chemistry|biology|english|history|geography|computer science|cs|science)\b",
             r"\b(?:physics|chemistry|biology|math|maths|mathematics|english|history|geography|computer science|cs|science)\s+(?:exam|test|paper)\b",
             r"\b(?:exam|test|paper)\s+(?:is|for)\s+(?:math|maths|mathematics|physics|chemistry|biology|english|history|geography|computer science|cs|science)\b",
+        )
+        return any(re.search(pattern, lower) for pattern in patterns)
+
+    @staticmethod
+    def _topic_is_explicit(text: str) -> bool:
+        lower = text.lower()
+        patterns = (
+            r"\b(?:revise|revision|study|learn|explain|understand|practice|help me with)\s+(?:the\s+)?[a-z][a-z0-9' -]{2,80}",
+            r"\b(?:chapter|ch\.?|topic|concept)\s*\d+[a-z0-9 -]*",
         )
         return any(re.search(pattern, lower) for pattern in patterns)
 
