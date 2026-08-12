@@ -38,17 +38,18 @@ def _save(data: Dict) -> None:
 
 
 class ProgressManager:
-    def record_session(self, subject: str, minutes: int, topic: str = "") -> None:
+    def record_session(self, subject: str, minutes: int, topic: str = "") -> bool:
         data = _load()
         subject = subject.strip()
         if not subject or minutes <= 0:
-            return
+            return False
         data.setdefault("subjects", {}).setdefault(subject, {"minutes": 0, "sessions": 0})
         data["subjects"][subject]["minutes"] += int(minutes)
         data["subjects"][subject]["sessions"] += 1
         data.setdefault("sessions", []).append({"subject": subject, "minutes": int(minutes), "topic": topic.strip()})
         data["sessions"] = data["sessions"][-100:]
         _save(data)
+        return True
 
     def set_mastery(self, subject: str, concept: str, mastery: int) -> bool:
         if not subject.strip() or not concept.strip() or not 0 <= int(mastery) <= 100:
