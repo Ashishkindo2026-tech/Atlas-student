@@ -19,8 +19,6 @@ import re
 
 class AtlasAgent:
     def __init__(self):
-        # Lazy construction keeps the agent lightweight and makes the LLM
-        # boundary cleanly replaceable in tests and offline environments.
         self.llm = None
         self.memory_router = MemoryRouter()
         self.personality = Personality()
@@ -42,7 +40,6 @@ class AtlasAgent:
         return "mathematics" if subject == "math" else subject
 
     def _learn_from_message(self, text: str):
-        """Record explicit learning evidence; never turn a signal into mastery."""
         signal = detect_learning_signal(text)
         if signal is None:
             return None
@@ -206,8 +203,6 @@ class AtlasAgent:
         return subject, minutes
 
     def ask_llm(self, user):
-        if self.llm is None:
-            self.llm = Ollama_Client()
         context = build_context(user)
         reasoning_plan = self.reasoning.plan(user, context)
         study_request = self._study_request(user)
@@ -220,9 +215,10 @@ class AtlasAgent:
             if subject and minutes > 0:
                 retrieved = retrieve(subject, limit=12)
                 plan = build_study_plan(subject.title(), minutes, retrieved, self.progress.data())
-                if plan:
-                    return self._reply(format_plan(subject.title(), minutes, plan))
+                return self._reply(format_plan(subject.title(), minutes, plan))
 
+        if self.llm is None:
+            self.llm = Ollama_Client()
         reasoning = self.reasoning.prompt_context(user, context)
         education = education_context(user)
         progress = self.progress.summary()
