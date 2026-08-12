@@ -19,7 +19,9 @@ import re
 
 class AtlasAgent:
     def __init__(self):
-        self.llm = Ollama_Client()
+        # Lazy construction keeps the agent lightweight and makes the LLM
+        # boundary cleanly replaceable in tests and offline environments.
+        self.llm = None
         self.memory_router = MemoryRouter()
         self.personality = Personality()
         self.goals = GoalManager()
@@ -61,8 +63,6 @@ class AtlasAgent:
         if not text:
             return self._reply("Tell me what you'd like to work on.")
 
-        # Automatic learning is deliberately evidence-based. It runs on the
-        # user's message only and never silently creates a mastery percentage.
         self._learn_from_message(text)
 
         if self.pending_memory:
@@ -95,8 +95,8 @@ class AtlasAgent:
                     minutes = int(parts[1])
                     subject = parts[0]
                     topic = " ".join(parts[2:])
-                    self.progress.record_session(subject, minutes, topic)
-                    return self._reply(f"Recorded {minutes} minutes of {subject} study.")
+                    if self.progress.record_session(subject, minutes, topic):
+                        return self._reply(f"Recorded {minutes} minutes of {subject} study.")
                 except ValueError:
                     pass
             return self._reply("Use: study session <subject> <minutes> [topic]")
@@ -192,7 +192,6 @@ class AtlasAgent:
 
     @staticmethod
     def _study_request(user: str):
-        """Extract only explicit subject/time signals; never guess a subject."""
         match = re.search(r"(?:have|got|only|just)\s+(\d+(?:\.\d+)?)\s*(minutes?|mins?|hours?|hrs?)", user.lower())
         if not match:
             match = re.search(r"(\d+(?:\.\d+)?)\s*(minutes?|mins?|hours?|hrs?)", user.lower())
@@ -207,6 +206,8 @@ class AtlasAgent:
         return subject, minutes
 
     def ask_llm(self, user):
+        if self.llm is None:
+            self.llm = Ollama_Client()
         context = build_context(user)
         reasoning_plan = self.reasoning.plan(user, context)
         study_request = self._study_request(user)
