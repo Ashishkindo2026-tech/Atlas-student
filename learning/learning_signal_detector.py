@@ -11,9 +11,9 @@ class LearningSignal:
     evidence: str
 
 _POSITIVE = re.compile(r"\b(now i understand|i understand|i got it|finally understand|makes sense|i learned|i know how)\b", re.I)
-_NEGATIVE = re.compile(r"\b(don't understand|dont understand|still confused|i'm confused|im confused|don't get|dont get|can't understand|cannot understand)\b", re.I)
+_NEGATIVE = re.compile(r"\b(don't understand|dont understand|still confused|i'm confused|im confused|don't get|dont get|can't understand|cannot understand|made mistakes?|made an? mistake|keep making mistakes?|getting mistakes?|struggling with|weak in|weak at|bad at)\b", re.I)
 _CONCEPT = re.compile(
-    r"\b(?:understand|understood|confused about|don't understand|dont understand|don't get|dont get)\s+(?:the\s+)?(.+?)(?:[.!?]|$)",
+    r"\b(?:understand|understood|confused about|don't understand|dont understand|don't get|dont get|mistakes? in|mistake in|struggling with|weak in|weak at|bad at)\s+(?:the\s+)?(.+?)(?:[.!?]|$)",
     re.I,
 )
 
