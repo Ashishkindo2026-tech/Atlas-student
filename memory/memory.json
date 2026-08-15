@@ -1,4 +1,6 @@
 {
-    "version": 2,
-    "memories": []
+    "facts": {},
+    "important_memories": [
+        "I am building Atlas Student"
+    ]
 }
