@@ -1,8 +1,8 @@
 """Phases 39-48: bounded context, verification, prediction, federation and resilience primitives."""
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 import hashlib
 import json
+import shutil
 from pathlib import Path
 
 @dataclass
@@ -23,8 +23,7 @@ class ReasoningVerifier:
 
 class OutcomePredictor:
     def predict(self, outcome_fn, inputs): return outcome_fn(inputs)
-    def score(self, predicted, actual):
-        return 1.0 if predicted == actual else 0.0
+    def score(self, predicted, actual): return 1.0 if predicted == actual else 0.0
 
 class CapabilityEvolution:
     def propose(self, limitation, architecture_change, protected=False):
@@ -52,9 +51,28 @@ class CreationEngine:
     def plan(self, idea): return {"idea":idea,"steps":list(self.STEPS)}
 
 class RecoveryManager:
-    def __init__(self, root="."): self.root=Path(root)
+    def __init__(self, root="."): self.root=Path(root).resolve()
+    def snapshot(self, paths):
+        backup = self.root / ".atlas" / "recovery" / "snapshot"
+        if backup.exists(): shutil.rmtree(backup)
+        for rel in paths:
+            src=self.root / rel
+            if src.exists() and src.is_file():
+                dst=backup / rel; dst.parent.mkdir(parents=True, exist_ok=True); shutil.copy2(src,dst)
+        return backup
     def quarantine(self, path):
-        p=self.root/path; return p.exists()
+        src=self.root / path
+        if not src.exists(): return None
+        target=self.root / ".atlas" / "quarantine" / Path(path).name
+        target.parent.mkdir(parents=True, exist_ok=True); shutil.move(str(src),str(target)); return target
+    def restore(self, snapshot_path):
+        snap=Path(snapshot_path)
+        if not snap.exists(): raise FileNotFoundError(snapshot_path)
+        restored=[]
+        for src in snap.rglob('*'):
+            if src.is_file():
+                rel=src.relative_to(snap); dst=self.root/rel; dst.parent.mkdir(parents=True,exist_ok=True); shutil.copy2(src,dst); restored.append(str(rel))
+        return restored
     def verify(self, checks): return all(bool(c()) for c in checks)
 
 @dataclass
@@ -70,6 +88,7 @@ class Constitution:
 class ConstitutionStore:
     def __init__(self, path=".atlas/constitution.json"): self.path=Path(path)
     def save(self, constitution):
+        if not constitution.validate(): raise ValueError("Invalid constitution")
         self.path.parent.mkdir(parents=True,exist_ok=True)
         self.path.write_text(json.dumps(constitution.__dict__,indent=2),encoding="utf-8")
     def fingerprint(self):
