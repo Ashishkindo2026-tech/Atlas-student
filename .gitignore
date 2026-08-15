@@ -1,3 +1,7 @@
 __pycache__/
 *.py[cod]
 *.pyo
+memory/chat_history.json
+memory/archive.json
+student/progress.json
+user/user_knowledge.json
