@@ -1,12 +1,12 @@
 """Six-phase tests for Atlas Student."""
-import json
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 from brain.student_reasoning import StudentReasoner
+from memory.student_memory import StudentMemory
 from planning.student_planner import StudentPlanner
+from privacy.privacy_shield import PrivacyShield
 from voice.student_voice import detect_hinglish
 from vision.vision_client import VisionClient
 
@@ -19,8 +19,17 @@ class SixPhaseTests(unittest.TestCase):
         self.assertIn("subject", plan.missing)
 
     def test_planner_respects_total_minutes(self):
-        blocks = StudentPlanner().build("Physics", 45)
-        self.assertEqual(sum(block.minutes for block in blocks), 45)
+        for minutes in (1, 15, 45, 46, 90, 120):
+            blocks = StudentPlanner().build("Physics", minutes)
+            self.assertEqual(sum(block.minutes for block in blocks), minutes)
+
+    def test_memory_requires_consent(self):
+        memory = StudentMemory()
+        self.assertFalse(memory.remember("temporary test fact", approved=False))
+
+    def test_privacy_redacts_secrets(self):
+        shield = PrivacyShield()
+        self.assertIn("[REDACTED]", shield.redact("api_key=abc123"))
 
     def test_voice_detects_hinglish(self):
         self.assertTrue(detect_hinglish("mujhe physics ka revision karna hai"))
