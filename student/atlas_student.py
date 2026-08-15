@@ -1,20 +1,19 @@
-"""Unified Atlas Student six-phase subsystem.
-
-Phases: memory, reasoning, vision, voice, planning and privacy.
-"""
+"""Unified Atlas Student six-phase subsystem."""
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import Any, Dict, Optional
 
 from brain.student_reasoning import StudentReasoner
+from brain.student_intelligence import StudentIntelligence, AdaptiveLearning
 from education.retrieval import retrieve
 from student.progress_manager import ProgressManager
 from memory.student_memory import StudentMemory
 from planning.student_planner import StudentPlanner
 from privacy.privacy_shield import PrivacyShield
 from vision.vision_client import VisionClient
+from guidance.career import GuidanceEngine
+from student.lifecycle import AtlasLifecycle
 
 
 class AtlasStudentSystem:
@@ -25,22 +24,22 @@ class AtlasStudentSystem:
         self.privacy = PrivacyShield()
         self.vision = VisionClient()
         self.progress = ProgressManager()
+        self.intelligence = StudentIntelligence()
+        self.adaptive = AdaptiveLearning(self.intelligence)
+        self.guidance = GuidanceEngine()
+        self.lifecycle = AtlasLifecycle()
 
     def dashboard(self) -> Dict[str, Any]:
-        progress = self.progress.data()
         return {
-            "phases": {
-                "memory": True,
-                "reasoning": True,
-                "vision": True,
-                "voice": True,
-                "planning": True,
-                "privacy": True,
-            },
+            "phases": {str(k): {"name": v[0], "capabilities": v[1], "enabled": True}
+                       for k, v in __import__("student.lifecycle", fromlist=["PHASES"]).PHASES.items()},
             "memory_items": len(self.memory.approved()),
             "recent_messages": len(self.memory.recent()),
-            "progress": progress,
+            "progress": self.progress.data(),
+            "intelligence": self.intelligence.data(),
+            "adaptive_path": self.adaptive.next_path(),
             "privacy": self.privacy.status(),
+            "lifecycle": self.lifecycle.status(),
         }
 
     def plan(self, subject: str, minutes: int) -> str:
@@ -62,35 +61,46 @@ class AtlasStudentSystem:
         return json.dumps(self.privacy.export(), indent=2, ensure_ascii=False)
 
     def handle(self, command: str) -> Optional[str]:
-        """Handle explicit six-phase commands; return None for normal chat."""
-        text = command.strip()
-        lower = text.lower()
+        text = command.strip(); lower = text.lower()
         if lower in {"student dashboard", "atlas student dashboard", "student status"}:
             return json.dumps(self.dashboard(), indent=2, ensure_ascii=False)
-        if lower.startswith("student reason "):
-            return self.reason(text[15:].strip())
+        if lower.startswith("student reason "): return self.reason(text[15:].strip())
         if lower.startswith("student plan "):
             parts = text[13:].strip().split()
             if len(parts) >= 2:
-                try:
-                    return self.plan(" ".join(parts[:-1]), int(parts[-1]))
-                except ValueError:
-                    pass
+                try: return self.plan(" ".join(parts[:-1]), int(parts[-1]))
+                except ValueError: pass
             return "Use: student plan <subject> <minutes>"
-        if lower.startswith("student remember "):
-            return self.remember(text[17:].strip(), approved=False)
-        if lower in {"student privacy", "student privacy status"}:
-            return json.dumps(self.privacy.status(), indent=2, ensure_ascii=False)
-        if lower == "student export":
-            return self.privacy_export_json()
+        if lower.startswith("student remember "): return self.remember(text[17:].strip(), approved=False)
+        if lower in {"student privacy", "student privacy status"}: return json.dumps(self.privacy.status(), indent=2, ensure_ascii=False)
+        if lower == "student export": return self.privacy_export_json()
         if lower.startswith("student vision "):
-            payload = text[15:].strip().split("|", 1)
-            path = payload[0].strip()
+            payload = text[15:].strip().split("|", 1); path = payload[0].strip()
             prompt = payload[1].strip() if len(payload) == 2 else "Explain this image for a student."
-            try:
-                return self.vision_file(path, prompt)
-            except Exception as exc:
-                return f"Vision error: {exc}"
+            try: return self.vision_file(path, prompt)
+            except Exception as exc: return f"Vision error: {exc}"
+        if lower.startswith("student attempt "):
+            parts = text[16:].split("|", 3)
+            if len(parts) >= 3:
+                return json.dumps(self.intelligence.record_attempt(parts[0], parts[1], parts[2].strip().lower() in {"yes", "true", "correct", "1"}))
+            return "Use: student attempt <subject>|<topic>|<correct>"
+        if lower.startswith("student mistake "):
+            parts = text[16:].split("|", 3)
+            if len(parts) >= 3:
+                return json.dumps(self.intelligence.record_mistake(parts[0], parts[1], parts[2], parts[3] if len(parts) == 4 else ""))
+            return "Use: student mistake <subject>|<topic>|<error>|<correction>"
+        if lower.startswith("student goal "):
+            return json.dumps(self.intelligence.set_goal(text[13:].strip()))
+        if lower in {"weak topics", "student weak topics"}: return json.dumps(self.intelligence.weak_topics(), indent=2)
+        if lower.startswith("adaptive path"):
+            return json.dumps(self.adaptive.next_path(text[len("adaptive path"):].strip()), indent=2)
+        if lower.startswith("student guidance "):
+            path = text[17:].strip(); return self.guidance.explain(path)
+        if lower in {"roadmap", "phase status", "atlas phases"}: return json.dumps(self.lifecycle.status(), indent=2)
+        if lower == "offline on": return json.dumps(self.lifecycle.set_offline(True))
+        if lower == "offline off": return json.dumps(self.lifecycle.set_offline(False))
+        if lower == "sync on": return json.dumps(self.lifecycle.set_sync(True))
+        if lower == "sync off": return json.dumps(self.lifecycle.set_sync(False))
         return None
 
 
