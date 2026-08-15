@@ -1,43 +1,53 @@
-import json
-import os
-from datetime import datetime
+from memory.memory_manager import MemoryManager
 
-FILE = "memory/archive.json"
 
 class ArchiveManager:
-    """Moves old memories to an archive instead of destroying them."""
-    def __init__(self):
-        os.makedirs("memory", exist_ok=True)
-        if not os.path.exists(FILE):
-            self.save([])
+    """Compatibility facade over the unified MemoryManager archive."""
+
+    def __init__(self, memory_manager=None):
+        self.memory = memory_manager or MemoryManager()
 
     def load(self):
-        try:
-            with open(FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            return data if isinstance(data, list) else []
-        except (OSError, json.JSONDecodeError):
-            return []
+        return self.get_all()
 
     def save(self, data):
-        temp = FILE + ".tmp"
-        with open(temp, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=4, ensure_ascii=False)
-        os.replace(temp, FILE)
+        # Kept for compatibility. Archive writes are now owned by MemoryManager.
+        if isinstance(data, dict):
+            items = data.get("items", [])
+        else:
+            items = data if isinstance(data, list) else []
+        store = self.memory.load()
+        existing = {item.get("id") for item in store["memories"]}
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            if item.get("id") in existing:
+                continue
+            item = dict(item)
+            item.setdefault("id", __import__("uuid").uuid4().hex)
+            item.setdefault("type", item.get("kind", "note"))
+            item.setdefault("content", item.get("content", item.get("text", "")))
+            item["status"] = "archived"
+            item.setdefault("importance", 0.5)
+            item.setdefault("confidence", 1.0)
+            item.setdefault("created_at", item.get("archived_at", self.memory._now()))
+            item.setdefault("updated_at", item.get("archived_at", self.memory._now()))
+            item.setdefault("access_count", 0)
+            item.setdefault("tags", [])
+            item.setdefault("related_ids", [])
+            store["memories"].append(item)
+        self.memory.save(store)
 
     def archive(self, kind, content, reason="user_requested"):
-        data = self.load()
-        data.append({
-            "kind": kind,
-            "content": content,
-            "reason": reason,
-            "archived_at": datetime.now().isoformat(timespec="seconds")
-        })
-        self.save(data)
+        record = self.memory.add_important_memory(
+            str(content), importance=0.5, confidence=1.0, source=f"archive:{kind}"
+        )
+        if record:
+            self.memory.archive(record["id"], reason)
 
     def search(self, query):
-        q = query.lower()
-        return [item for item in self.load() if q in str(item.get("content", "")).lower()]
+        return [item for item in self.get_all().get("items", [])
+                if query.casefold() in str(item.get("content", "")).casefold()]
 
     def get_all(self):
-        return self.load()
+        return self.memory.get_archive()
