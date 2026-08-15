@@ -35,9 +35,11 @@ class StudentPlanner:
         progress = progress or {}
 
         weak = []
-        for item in progress.get("mastery", []):
+        concepts = progress.get("concepts", {})
+        items = concepts.values() if isinstance(concepts, dict) else concepts
+        for item in items:
             try:
-                score = int(item.get("score", 0))
+                score = int(item.get("mastery", 0))
             except (TypeError, ValueError):
                 score = 0
             if str(item.get("subject", "")).lower() == subject.lower() and score < 60:
