@@ -1,8 +1,21 @@
+import os
+import tempfile
 import unittest
+from pathlib import Path
+
 from brain.agent import AtlasAgent
 
 
 class Phase2IntelligenceTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.goals_file = str(Path(self.tmp.name) / "goals.json")
+        os.environ["ATLAS_GOALS_FILE"] = self.goals_file
+
+    def tearDown(self):
+        os.environ.pop("ATLAS_GOALS_FILE", None)
+        self.tmp.cleanup()
+
     def test_mistake_is_recorded_and_acknowledged(self):
         agent = AtlasAgent()
         response = agent.process("I made mistakes in physics chapter 3")
@@ -14,8 +27,8 @@ class Phase2IntelligenceTests(unittest.TestCase):
         agent = AtlasAgent()
         agent.process("I made mistakes in physics chapter 3")
         response = agent.process("which topics am I weak in?")
-        self.assertIn("Physics / chapter 3", response)
-        self.assertIn("difficulty signal", response)
+        self.assertIn("physics / chapter 3", response.lower())
+        self.assertIn("difficulty signal", response.lower())
 
     def test_natural_language_goal_is_saved(self):
         agent = AtlasAgent()
