@@ -14,6 +14,7 @@ from education.retrieval import retrieve
 from education.study_planner import build_study_plan, format_plan
 from student.progress_manager import ProgressManager
 from learning.learning_signal_detector import detect as detect_learning_signal
+from planning.exam_planner import ExamSubject, build_month_plan
 import re
 
 
@@ -202,7 +203,44 @@ class AtlasAgent:
         if subject == "math": subject = "mathematics"
         return subject, minutes
 
+    @staticmethod
+    def _exam_plan_request(user: str):
+        """Recognize explicit multi-subject exam load before invoking the LLM."""
+        lower = user.lower()
+        duration = re.search(r"(?:have|got|only|just)?\s*(\d+)\s*(day|days|month|months)\b", lower)
+        if not duration or "exam" not in lower:
+            return None
+        amount = int(duration.group(1))
+        days = amount * 30 if duration.group(2).startswith("month") else amount
+        aliases = {
+            "physics": "Physics",
+            "chemistry": "Chemistry",
+            "mathematics": "Mathematics",
+            "math": "Mathematics",
+            "biology": "Biology",
+            "english": "English",
+        }
+        subjects = []
+        for alias, display in aliases.items():
+            pattern = rf"(\d+)\s+chapters?\s+(?:in|of)\s+{re.escape(alias)}\b"
+            match = re.search(pattern, lower)
+            if match:
+                subjects.append(ExamSubject(display, int(match.group(1))))
+        if len(subjects) < 2:
+            return None
+        # Preserve the order in which subjects occur in the user's message.
+        positions = []
+        for subject in subjects:
+            pos = lower.find(subject.name.lower().split()[0])
+            positions.append((pos, subject))
+        return days, [s for _, s in sorted(positions)]
+
     def ask_llm(self, user):
+        exam_request = self._exam_plan_request(user)
+        if exam_request:
+            days, subjects = exam_request
+            return build_month_plan(days, subjects)
+
         context = build_context(user)
         reasoning_plan = self.reasoning.plan(user, context)
         study_request = self._study_request(user)
