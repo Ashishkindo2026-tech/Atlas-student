@@ -45,14 +45,55 @@ class AtlasAgent:
         if signal is None:
             return None
         subject = self._explicit_subject(text)
-        self.progress.record_learning_signal(
-            signal.kind,
-            signal.concept,
-            signal.confidence,
-            signal.evidence,
-            subject,
-        )
+        self.progress.record_learning_signal(signal.kind, signal.concept, signal.confidence, signal.evidence, subject)
         return signal
+
+    @staticmethod
+    def _exam_plan_request(user: str):
+        """Recognize explicit multi-subject exam loads before any LLM call."""
+        lower = re.sub(r"\s+", " ", user.lower()).strip()
+        if "exam" not in lower:
+            return None
+
+        duration = re.search(r"\b(\d+)\s*(days?|weeks?|months?)\b", lower)
+        if not duration:
+            return None
+        amount = int(duration.group(1))
+        unit = duration.group(2)
+        if unit.startswith("month"):
+            days = amount * 30
+        elif unit.startswith("week"):
+            days = amount * 7
+        else:
+            days = amount
+
+        aliases = {
+            "physics": "Physics",
+            "chemistry": "Chemistry",
+            "mathematics": "Mathematics",
+            "math": "Mathematics",
+            "biology": "Biology",
+            "english": "English",
+        }
+        matches = []
+        for alias, display in aliases.items():
+            # Accept "chapters in physics", "chapters of physics", and
+            # common typos/connectors such as "abd" in natural messages.
+            pattern = rf"\b(\d+)\s+chapters?\s+(?:in|of)\s+{re.escape(alias)}\b"
+            for match in re.finditer(pattern, lower):
+                matches.append((match.start(), ExamSubject(display, int(match.group(1)))))
+
+        if len(matches) < 2:
+            return None
+        matches.sort(key=lambda item: item[0])
+        # De-duplicate aliases while preserving the user's order.
+        subjects = []
+        seen = set()
+        for _, subject in matches:
+            if subject.name not in seen:
+                subjects.append(subject)
+                seen.add(subject.name)
+        return days, subjects if len(subjects) >= 2 else None
 
     def process(self, user):
         text = user.strip()
@@ -62,6 +103,14 @@ class AtlasAgent:
             return self._reply("Tell me what you'd like to work on.")
 
         self._learn_from_message(text)
+
+        # Deterministic exam planning MUST run before generic greetings/LLM.
+        # This prevents an explicit exam request from falling through to the
+        # conversational model and returning an unrelated greeting.
+        exam_request = self._exam_plan_request(text)
+        if exam_request:
+            days, subjects = exam_request
+            return self._reply(build_month_plan(days, subjects))
 
         if self.pending_memory:
             if clean in {"yes", "yes remember it", "remember it", "save it", "save", "okay", "ok"}:
@@ -203,44 +252,7 @@ class AtlasAgent:
         if subject == "math": subject = "mathematics"
         return subject, minutes
 
-    @staticmethod
-    def _exam_plan_request(user: str):
-        """Recognize explicit multi-subject exam load before invoking the LLM."""
-        lower = user.lower()
-        duration = re.search(r"(?:have|got|only|just)?\s*(\d+)\s*(day|days|month|months)\b", lower)
-        if not duration or "exam" not in lower:
-            return None
-        amount = int(duration.group(1))
-        days = amount * 30 if duration.group(2).startswith("month") else amount
-        aliases = {
-            "physics": "Physics",
-            "chemistry": "Chemistry",
-            "mathematics": "Mathematics",
-            "math": "Mathematics",
-            "biology": "Biology",
-            "english": "English",
-        }
-        subjects = []
-        for alias, display in aliases.items():
-            pattern = rf"(\d+)\s+chapters?\s+(?:in|of)\s+{re.escape(alias)}\b"
-            match = re.search(pattern, lower)
-            if match:
-                subjects.append(ExamSubject(display, int(match.group(1))))
-        if len(subjects) < 2:
-            return None
-        # Preserve the order in which subjects occur in the user's message.
-        positions = []
-        for subject in subjects:
-            pos = lower.find(subject.name.lower().split()[0])
-            positions.append((pos, subject))
-        return days, [s for _, s in sorted(positions)]
-
     def ask_llm(self, user):
-        exam_request = self._exam_plan_request(user)
-        if exam_request:
-            days, subjects = exam_request
-            return build_month_plan(days, subjects)
-
         context = build_context(user)
         reasoning_plan = self.reasoning.plan(user, context)
         study_request = self._study_request(user)
