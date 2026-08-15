@@ -22,26 +22,21 @@ class MemoryEndToEndTests(unittest.TestCase):
         self.temp.cleanup()
 
     def test_realistic_memory_lifecycle(self):
-        # 1–2: remember a durable fact through the user-facing router.
         command = self.router.route("Remember that I am building Atlas Student")
         self.assertEqual(command["type"], "memory_request")
-        saved = self.router.save_memory(command["value"])
-        self.assertTrue(saved)
+        self.assertTrue(self.router.save_memory(command["value"]))
 
-        # 3–4: unrelated conversation does not erase the memory.
         self.assertEqual(self.router.route("What is 2 + 2?")["type"], "conversation")
         results = self.router.search("What am I building?")
         self.assertTrue(results)
         self.assertIn("Atlas Student", results[0]["content"])
 
-        # 5: update the same concept; history must retain the old state.
         self.manager.remember("current_project", "Atlas Student")
         self.manager.remember("current_project", "Atlas Core")
         self.assertEqual(self.manager.recall("current_project"), "Atlas Core")
         history = self.manager.get_all_records()
         self.assertTrue(any(r.get("status") == "superseded" and r.get("value") == "Atlas Student" for r in history))
 
-        # 6: forget the remembered project; it becomes archived, not destroyed.
         forget = self.router.route("Forget Atlas Student")
         self.assertEqual(forget["type"], "forget_request")
         self.assertTrue(self.router.forget_memory(forget["value"]))
