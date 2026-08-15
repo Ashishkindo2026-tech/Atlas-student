@@ -24,7 +24,11 @@ def _clean_concept(value: str | None) -> str | None:
     value = re.sub(r"\s+", " ", value).strip(" \t\n.,!?;:")
     if not value or len(value) > 120:
         return None
-    return value
+    # Keep the topic itself separate from the surrounding subject phrase.
+    # Example: "physics chapter 3" -> "chapter 3" because the subject is
+    # recorded separately by AtlasAgent.
+    value = re.sub(r"^(?:physics|chemistry|mathematics|maths|math|biology|english|science|history|geography|computer science)\s+", "", value, flags=re.I)
+    return value or None
 
 
 def detect(text: str, concept: str | None = None) -> LearningSignal | None:
