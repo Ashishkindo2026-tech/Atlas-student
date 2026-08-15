@@ -45,12 +45,24 @@ class AtlasIntegrationTests(unittest.TestCase):
                 result = agent.process("I still don't understand friction in physics.")
                 data = agent.progress.data()
 
-        self.assertEqual(result, "Integration test response")
+        self.assertIn("difficulty signal", result.lower())
         self.assertEqual(len(data["learning_signals"]), 1)
         signal = data["learning_signals"][0]
         self.assertEqual(signal["kind"], "difficulty")
         self.assertEqual(signal["subject"], "physics")
         self.assertIn("friction", signal["evidence"].lower())
+
+    def test_non_signal_messages_still_reach_llm(self):
+        fake = FakeLLM()
+        with tempfile.TemporaryDirectory() as tmp:
+            progress_file = Path(tmp) / "progress.json"
+            with patch("brain.agent.Ollama_Client", return_value=fake), \
+                 patch("student.progress_manager.FILE", progress_file):
+                agent = AtlasAgent()
+                result = agent.process("Explain why friction opposes relative motion.")
+
+        self.assertEqual(result, "Integration test response")
+        self.assertTrue(fake.calls)
         self.assertIn("LEARNING PROGRESS", fake.calls[0])
 
 
