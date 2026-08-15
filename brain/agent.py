@@ -35,10 +35,10 @@ class AtlasAgent:
 
     @staticmethod
     def _explicit_subject(text: str):
-        subjects = ["physics", "chemistry", "mathematics", "math", "biology", "english", "science", "history", "geography", "computer science"]
+        subjects = ["physics", "chemistry", "mathematics", "maths", "math", "biology", "english", "science", "history", "geography", "computer science"]
         lower = text.lower()
         subject = next((s for s in subjects if re.search(rf"\b{re.escape(s)}\b", lower)), None)
-        return "mathematics" if subject == "math" else subject
+        return "mathematics" if subject in {"math", "maths"} else subject
 
     def _learn_from_message(self, text: str):
         signal = detect_learning_signal(text)
@@ -71,6 +71,7 @@ class AtlasAgent:
             "physics": "Physics",
             "chemistry": "Chemistry",
             "mathematics": "Mathematics",
+            "maths": "Mathematics",
             "math": "Mathematics",
             "biology": "Biology",
             "english": "English",
@@ -247,9 +248,9 @@ class AtlasAgent:
         amount = float(match.group(1))
         unit = match.group(2)
         minutes = int(amount * 60) if unit.startswith(("hour", "hr")) else int(amount)
-        subjects = ["physics", "chemistry", "mathematics", "math", "biology", "english", "science", "history", "geography", "computer science"]
+        subjects = ["physics", "chemistry", "mathematics", "maths", "math", "biology", "english", "science", "history", "geography", "computer science"]
         subject = next((s for s in subjects if s in user.lower()), None)
-        if subject == "math": subject = "mathematics"
+        if subject in {"math", "maths"}: subject = "mathematics"
         return subject, minutes
 
     def ask_llm(self, user):
