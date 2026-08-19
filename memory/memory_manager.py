@@ -247,9 +247,20 @@ class MemoryManager:
                 item["score"] = score
                 scored.append(item)
         scored.sort(key=lambda item: (item["score"], item.get("importance", 0)), reverse=True)
-        for item in scored[:limit]:
-            self._touch(item)
-            self._persist_record(item)
+
+        # Update access metadata on the real stored records. Do not persist the
+        # transient search score back into the memory schema.
+        selected_ids = {item.get("id") for item in scored[:limit]}
+        if selected_ids:
+            data = self.load()
+            changed = False
+            for record in data["memories"]:
+                if record.get("id") in selected_ids:
+                    self._touch(record)
+                    changed = True
+            if changed:
+                self.save(data)
+
         return scored[:limit]
 
     @staticmethod
