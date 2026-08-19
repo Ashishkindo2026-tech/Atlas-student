@@ -1,24 +1,24 @@
 """Atlas voice input/output with graceful degradation."""
 import asyncio
 import os
+import tempfile
 import time
 
 import edge_tts
 import pygame
 import speech_recognition as sr
 
-from llm.ollama_client import Ollama_Client
 
-
-_llm = Ollama_Client()
+# Optional local STT providers can be added without changing Atlas's voice API.
+# The current provider remains the standard SpeechRecognition backend.
+recognizer = sr.Recognizer()
 
 
 def speak(text):
     """Speak text when TTS is available; never crash Atlas on audio failure."""
-    file = "atlas_voice.mp3"
+    fd, file = tempfile.mkstemp(prefix="atlas_voice_", suffix=".mp3")
+    os.close(fd)
     try:
-        print("Atlas:", text)
-
         async def generate():
             communicate = edge_tts.Communicate(str(text), "en-GB-SoniaNeural")
             await communicate.save(file)
@@ -48,15 +48,8 @@ def speak(text):
             pass
 
 
-recognizer = sr.Recognizer()
-
-
 def listen():
-    """Return recognized text, or an empty string when voice input is unavailable.
-
-    The voice layer must never inject infrastructure error strings into the
-    normal Atlas conversation pipeline.
-    """
+    """Return recognized text or an empty string when voice input is unavailable."""
     try:
         with sr.Microphone() as source:
             print("[VOICE] Listening...")
@@ -65,7 +58,7 @@ def listen():
                 audio = recognizer.listen(source, timeout=6, phrase_time_limit=8)
                 text = recognizer.recognize_google(audio)
                 print("You:", text)
-                return text.lower()
+                return text.strip()
             except (sr.WaitTimeoutError, sr.UnknownValueError):
                 return ""
             except sr.RequestError as exc:
@@ -74,8 +67,3 @@ def listen():
     except Exception as exc:
         print("[VOICE INPUT DEGRADED]", type(exc).__name__, exc)
         return ""
-
-
-def ask_atlas(prompt):
-    """Compatibility wrapper using Atlas's shared LLM reliability path."""
-    return _llm.ask(prompt)
