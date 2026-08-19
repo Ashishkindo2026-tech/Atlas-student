@@ -1,4 +1,4 @@
-print("VOICE ENGINE FROM VOICE FOLDER LOADED")
+"""Atlas voice input/output with graceful degradation."""
 import asyncio
 import os
 import time
@@ -10,16 +10,14 @@ import speech_recognition as sr
 from llm.ollama_client import Ollama_Client
 
 
-# Shared LLM client: voice must use the same reliability path as text mode.
 _llm = Ollama_Client()
 
 
-# 🎤 TEXT TO SPEECH (FRIDAY-STYLE VOICE)
 def speak(text):
-    print("USING SONIA VOICE")
+    """Speak text when TTS is available; never crash Atlas on audio failure."""
+    file = "atlas_voice.mp3"
     try:
         print("Atlas:", text)
-        file = "atlas_voice.mp3"
 
         async def generate():
             communicate = edge_tts.Communicate(str(text), "en-GB-SoniaNeural")
@@ -40,12 +38,9 @@ def speak(text):
                 time.sleep(0.05)
         finally:
             pygame.mixer.quit()
-
-        if os.path.exists(file):
-            os.remove(file)
-
-    except Exception as e:
-        print("TTS ERROR:", e)
+    except Exception as exc:
+        print("[VOICE/TTS DEGRADED]", type(exc).__name__, exc)
+    finally:
         try:
             if os.path.exists(file):
                 os.remove(file)
@@ -53,11 +48,15 @@ def speak(text):
             pass
 
 
-# 🎧 SPEECH TO TEXT
 recognizer = sr.Recognizer()
 
 
 def listen():
+    """Return recognized text, or an empty string when voice input is unavailable.
+
+    The voice layer must never inject infrastructure error strings into the
+    normal Atlas conversation pipeline.
+    """
     try:
         with sr.Microphone() as source:
             print("[VOICE] Listening...")
@@ -67,17 +66,16 @@ def listen():
                 text = recognizer.recognize_google(audio)
                 print("You:", text)
                 return text.lower()
-            except sr.WaitTimeoutError:
+            except (sr.WaitTimeoutError, sr.UnknownValueError):
                 return ""
-            except sr.UnknownValueError:
+            except sr.RequestError as exc:
+                print("[VOICE/STT DEGRADED] Recognition service unavailable:", exc)
                 return ""
-    except Exception as e:
-        print("VOICE INPUT ERROR:", e)
-        return f"error: {e}"
+    except Exception as exc:
+        print("[VOICE INPUT DEGRADED]", type(exc).__name__, exc)
+        return ""
 
 
-# 🧠 OLLAMA CONNECTOR
-# Kept for compatibility with existing callers; the implementation is now
-# centralized in llm.ollama_client instead of maintaining a second HTTP path.
 def ask_atlas(prompt):
+    """Compatibility wrapper using Atlas's shared LLM reliability path."""
     return _llm.ask(prompt)
