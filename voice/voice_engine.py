@@ -1,4 +1,4 @@
-"""Atlas voice input/output with graceful degradation."""
+"""Atlas voice input/output with graceful online/offline degradation."""
 import asyncio
 import os
 import tempfile
@@ -8,9 +8,6 @@ import edge_tts
 import pygame
 import speech_recognition as sr
 
-
-# Optional local STT providers can be added without changing Atlas's voice API.
-# The current provider remains the standard SpeechRecognition backend.
 recognizer = sr.Recognizer()
 
 
@@ -48,21 +45,39 @@ def speak(text):
             pass
 
 
+def _recognize_offline(audio):
+    """Try SpeechRecognition's local Sphinx backend without network access."""
+    try:
+        return recognizer.recognize_sphinx(audio).strip()
+    except (sr.UnknownValueError, sr.RequestError, AttributeError):
+        return ""
+
+
 def listen():
-    """Return recognized text or an empty string when voice input is unavailable."""
+    """Return recognized text, preferring local STT and falling back online."""
     try:
         with sr.Microphone() as source:
             print("[VOICE] Listening...")
             recognizer.adjust_for_ambient_noise(source, duration=0.5)
             try:
                 audio = recognizer.listen(source, timeout=6, phrase_time_limit=8)
-                text = recognizer.recognize_google(audio)
-                print("You:", text)
-                return text.strip()
             except (sr.WaitTimeoutError, sr.UnknownValueError):
                 return ""
-            except sr.RequestError as exc:
-                print("[VOICE/STT DEGRADED] Recognition service unavailable:", exc)
+
+            # Local recognition first: Atlas remains useful without internet.
+            local_text = _recognize_offline(audio)
+            if local_text:
+                print("You (offline):", local_text)
+                return local_text
+
+            # Online fallback when the optional local Sphinx engine/model is absent
+            # or cannot decode the sample.
+            try:
+                text = recognizer.recognize_google(audio)
+                print("You (online):", text)
+                return text.strip()
+            except (sr.UnknownValueError, sr.RequestError) as exc:
+                print("[VOICE/STT DEGRADED]", type(exc).__name__)
                 return ""
     except Exception as exc:
         print("[VOICE INPUT DEGRADED]", type(exc).__name__, exc)
