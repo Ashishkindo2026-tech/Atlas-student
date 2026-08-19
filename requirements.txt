@@ -1,5 +1,6 @@
 requests>=2.31,<3
 SpeechRecognition>=3.10,<4
+pocketsphinx>=5.0,<6
 edge-tts>=6.1,<8
 pygame>=2.5,<3
 customtkinter>=5.2,<6
