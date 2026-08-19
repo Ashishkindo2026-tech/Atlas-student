@@ -3,5 +3,8 @@ __pycache__/
 *.pyo
 memory/chat_history.json
 memory/archive.json
+memory/memory.json
+memory/memory.json.tmp
 student/progress.json
 user/user_knowledge.json
+projects/projects.json
