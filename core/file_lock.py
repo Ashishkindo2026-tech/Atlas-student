@@ -8,18 +8,17 @@ from contextlib import contextmanager
 
 try:
     import msvcrt
-except ImportError:  # pragma: no cover - exercised on non-Windows CI
+except ImportError:
     msvcrt = None
 
 try:
     import fcntl
-except ImportError:  # pragma: no cover - Windows
+except ImportError:
     fcntl = None
 
 
 class FileLock:
     """Re-entrant process/thread lock backed by an OS file lock."""
-
     _guards: dict[str, threading.RLock] = {}
     _guards_lock = threading.Lock()
 
@@ -30,10 +29,14 @@ class FileLock:
         with self._guards_lock:
             self._thread_lock = self._guards.setdefault(self.path, threading.RLock())
         self._handle = None
+        self._depth = 0
 
     def acquire(self):
         if not self._thread_lock.acquire(timeout=self.timeout):
             raise TimeoutError(f"Timed out waiting for Atlas lock: {self.path}")
+        if self._depth:
+            self._depth += 1
+            return self
         start = time.monotonic()
         try:
             os.makedirs(os.path.dirname(self.path) or ".", exist_ok=True)
@@ -45,6 +48,7 @@ class FileLock:
                         msvcrt.locking(self._handle.fileno(), msvcrt.LK_NBLCK, 1)
                     elif fcntl:
                         fcntl.flock(self._handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    self._depth = 1
                     return self
                 except (OSError, BlockingIOError):
                     if time.monotonic() - start >= self.timeout:
@@ -58,7 +62,10 @@ class FileLock:
             raise
 
     def release(self):
-        if self._handle:
+        if self._depth <= 0:
+            raise RuntimeError("Atlas file lock released without acquire")
+        self._depth -= 1
+        if self._depth == 0 and self._handle:
             try:
                 if msvcrt:
                     self._handle.seek(0)
