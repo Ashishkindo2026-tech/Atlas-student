@@ -1,4 +1,4 @@
-"""Atlas voice input/output with graceful online/offline degradation."""
+"""Atlas voice I/O with local-first STT/TTS and graceful degradation."""
 import asyncio
 import os
 import tempfile
@@ -8,11 +8,34 @@ import edge_tts
 import pygame
 import speech_recognition as sr
 
+try:
+    import pyttsx3
+except ImportError:  # Optional until dependencies are installed.
+    pyttsx3 = None
+
 recognizer = sr.Recognizer()
 
 
+def _speak_local(text):
+    """Use the operating system's local TTS engine when available."""
+    if pyttsx3 is None:
+        return False
+    try:
+        engine = pyttsx3.init()
+        engine.say(str(text))
+        engine.runAndWait()
+        engine.stop()
+        return True
+    except Exception as exc:
+        print("[VOICE/LOCAL-TTS DEGRADED]", type(exc).__name__)
+        return False
+
+
 def speak(text):
-    """Speak text when TTS is available; never crash Atlas on audio failure."""
+    """Speak text locally first; use online neural TTS only as a fallback."""
+    if _speak_local(text):
+        return
+
     fd, file = tempfile.mkstemp(prefix="atlas_voice_", suffix=".mp3")
     os.close(fd)
     try:
@@ -46,7 +69,7 @@ def speak(text):
 
 
 def _recognize_offline(audio):
-    """Try SpeechRecognition's local Sphinx backend without network access."""
+    """Use the bundled local Sphinx backend; never contacts the network."""
     try:
         return recognizer.recognize_sphinx(audio).strip()
     except (sr.UnknownValueError, sr.RequestError, AttributeError):
@@ -54,24 +77,21 @@ def _recognize_offline(audio):
 
 
 def listen():
-    """Return recognized text, preferring local STT and falling back online."""
+    """Recognize speech locally first, with an optional online fallback."""
     try:
         with sr.Microphone() as source:
             print("[VOICE] Listening...")
             recognizer.adjust_for_ambient_noise(source, duration=0.5)
             try:
                 audio = recognizer.listen(source, timeout=6, phrase_time_limit=8)
-            except (sr.WaitTimeoutError, sr.UnknownValueError):
+            except sr.WaitTimeoutError:
                 return ""
 
-            # Local recognition first: Atlas remains useful without internet.
             local_text = _recognize_offline(audio)
             if local_text:
                 print("You (offline):", local_text)
                 return local_text
 
-            # Online fallback when the optional local Sphinx engine/model is absent
-            # or cannot decode the sample.
             try:
                 text = recognizer.recognize_google(audio)
                 print("You (online):", text)
