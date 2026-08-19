@@ -1,23 +1,30 @@
 import json
 import os
 
-PROJECT_FILE = "projects/projects.json"
+try:
+    from config.paths import PROJECT_FILE
+except ImportError:
+    PROJECT_FILE = "projects/projects.json"
+
+
+def _path():
+    return os.fspath(PROJECT_FILE)
 
 
 def load_projects():
-    os.makedirs("projects", exist_ok=True)
+    path = _path()
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
 
-    if not os.path.exists(PROJECT_FILE):
+    if not os.path.exists(path):
         save_projects({})
 
     try:
-        with open(PROJECT_FILE, "r", encoding="utf-8") as f:
+        with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
     except (OSError, ValueError, TypeError):
-        # Preserve the broken file for diagnosis instead of silently destroying it.
-        backup = PROJECT_FILE + ".corrupt"
+        backup = path + ".corrupt"
         try:
-            os.replace(PROJECT_FILE, backup)
+            os.replace(path, backup)
         except OSError:
             pass
         data = {}
@@ -30,11 +37,14 @@ def save_projects(data):
     if not isinstance(data, dict):
         raise TypeError("Project store must be a dictionary")
 
-    os.makedirs(os.path.dirname(PROJECT_FILE) or ".", exist_ok=True)
-    temp = PROJECT_FILE + ".tmp"
+    path = _path()
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    temp = path + ".tmp"
     with open(temp, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4, ensure_ascii=False)
-    os.replace(temp, PROJECT_FILE)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(temp, path)
 
 
 def create_project(name):
@@ -53,6 +63,9 @@ def add_task(project, task):
     if project not in projects:
         return False
 
+    task = str(task).strip()
+    if not task:
+        return False
     projects[project].setdefault("tasks", []).append(task)
     save_projects(projects)
     return True
