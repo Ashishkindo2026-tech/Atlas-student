@@ -12,7 +12,7 @@ class OllamaClientTests(unittest.TestCase):
         self.assertTrue(client.model)
         self.assertEqual(client.generate_url, "http://localhost:11434/api/generate")
 
-    @patch("llm.ollama_client.requests.post")
+    @patch("llm.ollama_client.requests.Session.post")
     def test_successful_response_is_stripped(self, post):
         response = Mock()
         response.json.return_value = {"response": "  hello Atlas  "}
@@ -22,26 +22,26 @@ class OllamaClientTests(unittest.TestCase):
         self.assertEqual(Ollama_Client().ask("hello"), "hello Atlas")
         post.assert_called_once()
 
-    @patch("llm.ollama_client.requests.post")
+    @patch("llm.ollama_client.requests.Session.post")
     def test_http_failure_becomes_ollama_error(self, post):
         response = Mock()
         response.raise_for_status.side_effect = requests.HTTPError("500")
         post.return_value = response
 
         with self.assertRaises(OllamaError):
-            Ollama_Client().ask("hello")
+            Ollama_Client(retries=0).ask("hello")
 
-    @patch("llm.ollama_client.requests.post", side_effect=requests.ConnectionError())
+    @patch("llm.ollama_client.requests.Session.post", side_effect=requests.ConnectionError())
     def test_connection_failure_is_explicit(self, _post):
         with self.assertRaisesRegex(OllamaError, "unavailable"):
-            Ollama_Client().ask("hello")
+            Ollama_Client(retries=0).ask("hello")
 
-    @patch("llm.ollama_client.requests.post", side_effect=requests.Timeout())
+    @patch("llm.ollama_client.requests.Session.post", side_effect=requests.Timeout())
     def test_timeout_is_explicit(self, _post):
         with self.assertRaisesRegex(OllamaError, "timed out"):
-            Ollama_Client(timeout=2).ask("hello")
+            Ollama_Client(retries=0, timeout=2).ask("hello")
 
-    @patch("llm.ollama_client.requests.post")
+    @patch("llm.ollama_client.requests.Session.post")
     def test_model_error_is_not_returned_as_chat_text(self, post):
         response = Mock()
         response.raise_for_status.return_value = None
