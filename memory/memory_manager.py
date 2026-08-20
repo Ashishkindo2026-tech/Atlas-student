@@ -5,22 +5,25 @@ import uuid
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
 
+from core.file_lock import FileLock
+
+try:
+    from config.paths import MEMORY_FILE
+except ImportError:
+    MEMORY_FILE = "memory/memory.json"
+
 
 class MemoryManager:
-    """Unified local memory store for Atlas.
-
-    All durable memories live in one JSON store. Facts, important memories,
-    experiences, and archived memories are records in the same collection.
-    Legacy memory/data.json and the old memory.json shape are migrated on load.
-    """
+    """Unified local memory store for Atlas with atomic, locked transactions."""
 
     SCHEMA_VERSION = 2
     ACTIVE_STATUSES = {"active"}
-    STORE_FILE = "memory/memory.json"
+    STORE_FILE = os.fspath(MEMORY_FILE)
     LEGACY_FILE = "memory/data.json"
 
     def __init__(self, file_path=None):
-        self.file = file_path or self.STORE_FILE
+        self.file = os.fspath(file_path or self.STORE_FILE)
+        self._lock = FileLock(self.file)
         self._initialize()
 
     @staticmethod
@@ -33,9 +36,10 @@ class MemoryManager:
 
     def _initialize(self):
         os.makedirs(os.path.dirname(self.file) or ".", exist_ok=True)
-        if not os.path.exists(self.file):
-            self._write(self.file, self._default_store())
-        self._migrate()
+        with self._lock:
+            if not os.path.exists(self.file):
+                self._write(self.file, self._default_store())
+            self._migrate_unlocked()
 
     def _read(self, path):
         with open(path, "r", encoding="utf-8") as handle:
@@ -45,12 +49,20 @@ class MemoryManager:
         temp = path + ".tmp"
         with open(temp, "w", encoding="utf-8") as handle:
             json.dump(data, handle, indent=4, ensure_ascii=False)
+            handle.flush()
+            os.fsync(handle.fileno())
         os.replace(temp, path)
 
-    def _migrate(self):
+    def _migrate_unlocked(self):
         try:
             data = self._read(self.file)
         except (OSError, ValueError, TypeError):
+            if os.path.exists(self.file):
+                backup = self.file + ".corrupt"
+                try:
+                    os.replace(self.file, backup)
+                except OSError:
+                    pass
             data = self._default_store()
 
         if isinstance(data, dict) and isinstance(data.get("memories"), list):
@@ -67,13 +79,9 @@ class MemoryManager:
         migrated = self._default_store()
         if isinstance(data, dict):
             for key, value in (data.get("facts") or {}).items():
-                migrated["memories"].append(
-                    self._new_record("fact", value, key=str(key), importance=0.8, source="legacy_memory")
-                )
+                migrated["memories"].append(self._new_record("fact", value, key=str(key), importance=0.8, source="legacy_memory"))
             for text in data.get("important_memories") or []:
-                migrated["memories"].append(
-                    self._new_record("important", str(text), importance=0.9, source="legacy_memory")
-                )
+                migrated["memories"].append(self._new_record("important", str(text), importance=0.9, source="legacy_memory"))
 
         if os.path.exists(self.LEGACY_FILE):
             try:
@@ -84,11 +92,12 @@ class MemoryManager:
                 existing_keys = {m.get("key") for m in migrated["memories"] if m.get("key")}
                 for key, value in legacy.items():
                     if str(key) not in existing_keys:
-                        migrated["memories"].append(
-                            self._new_record("fact", value, key=str(key), importance=0.8, source="legacy_data")
-                        )
-
+                        migrated["memories"].append(self._new_record("fact", value, key=str(key), importance=0.8, source="legacy_data"))
         self._write(self.file, migrated)
+
+    def _migrate(self):
+        with self._lock:
+            self._migrate_unlocked()
 
     def _normalize_record(self, record):
         if not isinstance(record, dict):
@@ -109,39 +118,27 @@ class MemoryManager:
         record.setdefault("source", "atlas")
         record.setdefault("tags", [])
         record.setdefault("related_ids", [])
-        return record
 
-    def _new_record(self, memory_type, content, key=None, value=None, importance=0.5,
-                    confidence=1.0, source="atlas", tags=None, related_ids=None):
+    def _new_record(self, memory_type, content, key=None, value=None, importance=0.5, confidence=1.0, source="atlas", tags=None, related_ids=None):
         now = self._now()
-        return {
-            "id": uuid.uuid4().hex,
-            "type": memory_type,
-            "content": str(content).strip(),
-            "key": key,
-            "value": content if value is None else value,
-            "importance": max(0.0, min(1.0, float(importance))),
-            "confidence": max(0.0, min(1.0, float(confidence))),
-            "status": "active",
-            "created_at": now,
-            "updated_at": now,
-            "last_accessed_at": None,
-            "access_count": 0,
-            "source": source,
-            "tags": list(tags or []),
-            "related_ids": list(related_ids or []),
-        }
+        return {"id": uuid.uuid4().hex, "type": memory_type, "content": str(content).strip(), "key": key,
+                "value": content if value is None else value, "importance": max(0.0, min(1.0, float(importance))),
+                "confidence": max(0.0, min(1.0, float(confidence))), "status": "active", "created_at": now,
+                "updated_at": now, "last_accessed_at": None, "access_count": 0, "source": source,
+                "tags": list(tags or []), "related_ids": list(related_ids or [])}
 
     def load(self):
-        self._migrate()
-        return self._read(self.file)
+        with self._lock:
+            self._migrate_unlocked()
+            return self._read(self.file)
 
     def save(self, data):
         if not isinstance(data, dict):
             raise TypeError("Memory store must be a dictionary")
-        data["version"] = self.SCHEMA_VERSION
-        data.setdefault("memories", [])
-        self._write(self.file, data)
+        with self._lock:
+            data["version"] = self.SCHEMA_VERSION
+            data.setdefault("memories", [])
+            self._write(self.file, data)
 
     def _active(self):
         return [m for m in self.load()["memories"] if m.get("status") in self.ACTIVE_STATUSES]
@@ -158,36 +155,37 @@ class MemoryManager:
         return record
 
     def remember(self, key, value, confidence=1.0, importance=0.8, source="atlas"):
-        key = str(key).strip()
-        value = str(value).strip()
+        key, value = str(key).strip(), str(value).strip()
         if not key or not value:
             return False
-
-        data = self.load()
-        existing = next((m for m in data["memories"]
-                         if m.get("key") == key and m.get("status") in self.ACTIVE_STATUSES), None)
-        if existing:
-            if str(existing.get("value")) == value:
-                self._touch(existing)
-                self._persist_record(existing)
-                return existing
-            existing["status"] = "superseded"
-            existing["updated_at"] = self._now()
-            self._persist_record(existing)
-
-        record = self._new_record("fact", value, key=key, value=value,
-                                  confidence=confidence, importance=importance, source=source)
-        return self._persist_record(record)
+        with self._lock:
+            data = self.load()
+            existing = next((m for m in data["memories"] if m.get("key") == key and m.get("status") in self.ACTIVE_STATUSES), None)
+            if existing:
+                if str(existing.get("value")) == value:
+                    self._touch(existing)
+                    self.save(data)
+                    return existing
+                existing["status"] = "superseded"
+                existing["updated_at"] = self._now()
+                self.save(data)
+            record = self._new_record("fact", value, key=key, value=value, confidence=confidence, importance=importance, source=source)
+            data = self.load()
+            data["memories"].append(record)
+            self.save(data)
+            return record
 
     def recall(self, key):
         key = str(key).strip()
-        matches = [m for m in self._active() if m.get("key") == key]
-        if not matches:
-            return None
-        record = max(matches, key=lambda m: m.get("updated_at", ""))
-        self._touch(record)
-        self._persist_record(record)
-        return record.get("value")
+        with self._lock:
+            data = self.load()
+            matches = [m for m in data["memories"] if m.get("key") == key and m.get("status") in self.ACTIVE_STATUSES]
+            if not matches:
+                return None
+            record = max(matches, key=lambda m: m.get("updated_at", ""))
+            self._touch(record)
+            self.save(data)
+            return record.get("value")
 
     def get_facts(self):
         return {m["key"]: m.get("value") for m in self._active() if m.get("type") == "fact" and m.get("key")}
@@ -196,22 +194,25 @@ class MemoryManager:
         text = str(text).strip()
         if not text:
             return False
-        data = self.load()
-        candidates = [m for m in data["memories"] if m.get("status") in self.ACTIVE_STATUSES]
-        duplicate = next((m for m in candidates if m.get("content", "").casefold() == text.casefold()), None)
-        if duplicate:
-            self._touch(duplicate)
-            self._persist_record(duplicate)
-            return duplicate
-        record = self._new_record("important", text, importance=importance,
-                                  confidence=confidence, source=source)
-        return self._persist_record(record)
+        with self._lock:
+            data = self.load()
+            candidates = [m for m in data["memories"] if m.get("status") in self.ACTIVE_STATUSES]
+            duplicate = next((m for m in candidates if m.get("content", "").casefold() == text.casefold()), None)
+            if duplicate:
+                self._touch(duplicate)
+                self.save(data)
+                return duplicate
+            record = self._new_record("important", text, importance=importance, confidence=confidence, source=source)
+            data["memories"].append(record)
+            self.save(data)
+            return record
 
     def get_important_memories(self):
         return [m["content"] for m in self._active() if m.get("type") == "important"]
 
-    def _touch(self, record):
-        record["last_accessed_at"] = self._now()
+    @staticmethod
+    def _touch(record):
+        record["last_accessed_at"] = MemoryManager._now()
         record["access_count"] = int(record.get("access_count", 0)) + 1
 
     @staticmethod
@@ -222,85 +223,73 @@ class MemoryManager:
         query_tokens = self._tokens(query)
         if not query_tokens:
             return 0.0
-        searchable = " ".join([
-            str(record.get("content", "")),
-            str(record.get("key") or "").replace("_", " "),
-            str(record.get("value") or ""),
-            " ".join(record.get("tags") or []),
-        ])
+        searchable = " ".join([str(record.get("content", "")), str(record.get("key") or "").replace("_", " "), str(record.get("value") or ""), " ".join(record.get("tags") or [])])
         tokens = self._tokens(searchable)
         overlap = len(query_tokens & tokens) / max(1, len(query_tokens))
         phrase = 1.0 if str(query).strip().lower() in searchable.lower() else 0.0
-        return round((overlap * 0.65) + (phrase * 0.20) +
-                     (float(record.get("importance", 0.5)) * 0.10) +
-                     (float(record.get("confidence", 1.0)) * 0.05), 6)
+        fuzzy = SequenceMatcher(None, str(query).lower(), str(record.get("content", "")).lower()).ratio()
+        return round((overlap * 0.55) + (phrase * 0.20) + (fuzzy * 0.10) + (float(record.get("importance", 0.5)) * 0.10) + (float(record.get("confidence", 1.0)) * 0.05), 6)
 
     def search(self, query, limit=10, include_archived=False):
-        records = self.load()["memories"]
-        if not include_archived:
-            records = [m for m in records if m.get("status") in self.ACTIVE_STATUSES]
-        scored = []
-        for record in records:
-            score = self._score(query, record)
-            if score > 0:
-                item = dict(record)
-                item["score"] = score
-                scored.append(item)
-        scored.sort(key=lambda item: (item["score"], item.get("importance", 0)), reverse=True)
-        for item in scored[:limit]:
-            self._touch(item)
-            self._persist_record(item)
-        return scored[:limit]
+        if not str(query).strip() or limit <= 0:
+            return []
+        with self._lock:
+            records = self.load()["memories"]
+            if not include_archived:
+                records = [m for m in records if m.get("status") in self.ACTIVE_STATUSES]
+            scored = []
+            for record in records:
+                score = self._score(query, record)
+                if score > 0:
+                    item = dict(record)
+                    item["score"] = score
+                    scored.append(item)
+            scored.sort(key=lambda item: (item["score"], item.get("importance", 0)), reverse=True)
+            selected_ids = {item.get("id") for item in scored[:limit]}
+            if selected_ids:
+                data = self.load()
+                for record in data["memories"]:
+                    if record.get("id") in selected_ids:
+                        self._touch(record)
+                self.save(data)
+            return scored[:limit]
 
     @staticmethod
     def _similar(a, b):
         return SequenceMatcher(None, a.casefold(), b.casefold()).ratio()
 
     def archive(self, record_id, reason="archived"):
-        data = self.load()
-        for record in data["memories"]:
-            if record.get("id") == record_id and record.get("status") != "archived":
-                record["status"] = "archived"
-                record["archive_reason"] = reason
-                record["updated_at"] = self._now()
-                self.save(data)
-                return True
-        return False
+        with self._lock:
+            data = self.load()
+            for record in data["memories"]:
+                if record.get("id") == record_id and record.get("status") != "archived":
+                    record["status"] = "archived"; record["archive_reason"] = reason; record["updated_at"] = self._now()
+                    self.save(data); return True
+            return False
 
     def archive_matching(self, query, reason="user_requested_forget"):
-        data = self.load()
-        matches = []
-        for record in data["memories"]:
-            if record.get("status") not in self.ACTIVE_STATUSES:
-                continue
-            searchable = f"{record.get('content', '')} {record.get('key') or ''} {record.get('value') or ''}"
-            if query.casefold() in searchable.casefold() or self._similar(query, str(record.get("content", ""))) >= 0.72:
-                record["status"] = "archived"
-                record["archive_reason"] = reason
-                record["updated_at"] = self._now()
-                matches.append(record)
-        self.save(data)
-        return matches
+        with self._lock:
+            data = self.load(); matches = []
+            for record in data["memories"]:
+                if record.get("status") not in self.ACTIVE_STATUSES: continue
+                searchable = f"{record.get('content', '')} {record.get('key') or ''} {record.get('value') or ''}"
+                if query.casefold() in searchable.casefold() or self._similar(query, str(record.get("content", ""))) >= 0.72:
+                    record["status"] = "archived"; record["archive_reason"] = reason; record["updated_at"] = self._now(); matches.append(record)
+            self.save(data); return matches
 
     def archive_all(self, reason="user_requested_forget_all"):
-        data = self.load()
-        count = 0
-        for record in data["memories"]:
-            if record.get("status") in self.ACTIVE_STATUSES:
-                record["status"] = "archived"
-                record["archive_reason"] = reason
-                record["updated_at"] = self._now()
-                count += 1
-        self.save(data)
-        return count
+        with self._lock:
+            data = self.load(); count = 0
+            for record in data["memories"]:
+                if record.get("status") in self.ACTIVE_STATUSES:
+                    record["status"] = "archived"; record["archive_reason"] = reason; record["updated_at"] = self._now(); count += 1
+            self.save(data); return count
 
     def delete_important_memory(self, text):
-        matches = self.archive_matching(text, "user_requested_forget")
-        return any(m.get("type") == "important" for m in matches)
+        return any(m.get("type") == "important" for m in self.archive_matching(text, "user_requested_forget"))
 
     def delete_fact(self, key):
-        matches = self.archive_matching(str(key), "user_requested_forget")
-        return any(m.get("key") == key for m in matches)
+        return any(m.get("key") == key for m in self.archive_matching(str(key), "user_requested_forget"))
 
     def delete_all_memory(self):
         return self.archive_all()

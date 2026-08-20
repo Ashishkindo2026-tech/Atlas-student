@@ -1,7 +1,19 @@
 __pycache__/
 *.py[cod]
 *.pyo
+
+# Atlas runtime/user data — never commit live state
+runtime_data/
+*.corrupt
+*.tmp
 memory/chat_history.json
 memory/archive.json
+memory/memory.json
 student/progress.json
 user/user_knowledge.json
+projects/projects.json
+
+# Local development / environment files
+.env
+.venv/
+venv/
