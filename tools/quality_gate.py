@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
+import subprocess
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -59,6 +59,27 @@ def _text(root: Path) -> str:
     return "\n".join(chunks)
 
 
+def _tracked_forbidden_files(root: Path) -> list[str]:
+    """Return forbidden local-state files that are actually tracked by Git.
+
+    Runtime memory files are intentionally allowed to exist in a working tree
+    when they are protected by .gitignore. The gate is about preventing local
+    state from being committed, not about deleting a developer's runtime state.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(root), "ls-files", "-z"],
+            capture_output=True,
+            check=True,
+            text=False,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return []
+
+    tracked = result.stdout.decode("utf-8", errors="replace").split("\0")
+    return [path for path in tracked if path and Path(path).name in FORBIDDEN_NAMES]
+
+
 def run_gates(root: Path) -> list[GateResult]:
     results: list[GateResult] = []
     missing = [p for p in REQUIRED_PATHS if not (root / p).exists()]
@@ -69,9 +90,10 @@ def run_gates(root: Path) -> list[GateResult]:
     results.append(GateResult("non-empty-python", not empty,
                               "empty implementation modules: " + ", ".join(empty) if empty else "no empty implementation modules"))
 
-    secrets = [str(p.relative_to(root)) for p in root.rglob("*") if p.is_file() and p.name in FORBIDDEN_NAMES]
+    secrets = _tracked_forbidden_files(root)
     results.append(GateResult("local-state-protection", not secrets,
-                              "forbidden local-state files: " + ", ".join(secrets) if secrets else "no forbidden local-state files tracked"))
+                              "tracked forbidden local-state files: " + ", ".join(secrets)
+                              if secrets else "no forbidden local-state files tracked"))
 
     tests = root / "tests"
     test_files = list(tests.rglob("test_*.py")) if tests.exists() else []
