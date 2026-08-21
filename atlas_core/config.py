@@ -10,7 +10,6 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -18,7 +17,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 class AtlasConfig:
     """Immutable runtime configuration with safe local defaults."""
 
-    ollama_base_url: str = "http://127.0.0.1:11434"
+    ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "qwen2.5:1.5b"
     history_limit: int = 50
     request_timeout_seconds: float = 120.0
@@ -33,7 +32,6 @@ class AtlasConfig:
             raise ValueError("ATLAS_HISTORY_LIMIT must be >= 1")
         if timeout <= 0:
             raise ValueError("ATLAS_REQUEST_TIMEOUT must be > 0")
-
         return cls(
             ollama_base_url=os.getenv("ATLAS_OLLAMA_URL", cls.ollama_base_url),
             ollama_model=os.getenv("ATLAS_OLLAMA_MODEL", cls.ollama_model),
