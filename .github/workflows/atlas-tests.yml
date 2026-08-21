@@ -29,5 +29,8 @@ jobs:
           python -m pip install -r requirements.txt
           python -m pip install pytest
 
+      - name: Run deterministic repository quality gates
+        run: python tools/quality_gate.py
+
       - name: Run repository verification tests
         run: python -m pytest -q tests
