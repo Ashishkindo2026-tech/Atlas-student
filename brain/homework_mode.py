@@ -23,5 +23,5 @@ class HomeworkMode:
             raise ValueError("question must not be empty")
         return (
             f"Homework mode ({self.subject}, step {self.step}): "
-            "f"break this question into one small reasoning step: {question}"
+            f"break this question into one small reasoning step: {question}"
         )
