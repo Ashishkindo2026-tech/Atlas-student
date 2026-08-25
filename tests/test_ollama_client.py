@@ -10,7 +10,7 @@ class OllamaClientTests(unittest.TestCase):
     def test_configuration_defaults(self):
         client = Ollama_Client()
         self.assertTrue(client.model)
-        self.assertEqual(client.generate_url, "http://localhost:11434/api/generate")
+        self.assertEqual(client.generate_url, "http://127.0.0.1:11434/api/generate")
 
     @patch("llm.ollama_client.requests.Session.post")
     def test_successful_response_is_stripped(self, post):
