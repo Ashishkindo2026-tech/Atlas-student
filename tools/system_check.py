@@ -8,13 +8,19 @@ from __future__ import annotations
 
 import importlib
 import json
-import os
 import platform
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+
+# Running ``python tools/system_check.py`` puts ``tools/`` on sys.path instead
+# of the project root. Add the root explicitly so package imports work from a
+# normal Windows command prompt without requiring PYTHONPATH.
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 
 @dataclass
