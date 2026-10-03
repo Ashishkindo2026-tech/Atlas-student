@@ -153,11 +153,6 @@ class GrowthSystem:
         return max([int(x.get("id", 0)) for x in items] or [0]) + 1
 
 
-def _week_key() -> str:
-    # Seven-day lookback avoids calendar/locale ambiguity and matches habit checks.
-    return (datetime.now(timezone.utc).date().toordinal() - 6)
-
-
 def _week_dates() -> set[str]:
     today = datetime.now(timezone.utc).date()
     return {(today.fromordinal(today.toordinal() - i)).isoformat() for i in range(7)}
