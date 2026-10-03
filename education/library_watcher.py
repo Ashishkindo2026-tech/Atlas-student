@@ -116,8 +116,22 @@ def scan_and_ingest(root: str | Path | None = None) -> list[dict]:
             results.append({"id": book.get("id"), "path": source, "status": "removed"})
 
     for pdf, class_level, subject in candidates:
+        canonical = pdf.resolve()
+        fingerprint = _fingerprint(canonical)
+        existing = _matching_books(canonical)
+        if existing:
+            if any(book.get("fingerprint") == fingerprint for book in existing):
+                continue
+            if all(not book.get("fingerprint") for book in existing):
+                _record_fingerprint(existing, fingerprint)
+                continue
+            for book in existing:
+                remove_indexed_book(book.get("id", ""))
         try:
-            results.append(ingest_pdf(pdf, class_level, subject))
+            result = ingest_pdf(pdf, class_level, subject)
+            if isinstance(result, dict):
+                _store_fingerprint(result, fingerprint)
+            results.append(result)
         except Exception as exc:
             results.append({"path": str(pdf), "error": str(exc)})
     return results
