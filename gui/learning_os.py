@@ -309,7 +309,22 @@ class AtlasGUI(ctk.CTk):
         self.button(bottom, "🎙", self.show_voice, 48).pack(side="left", padx=4, pady=5)
         self.button(bottom, "Send  →", self.send_chat, 100, True).pack(side="right", padx=6, pady=5)
 
-    def attach_image(self):,        path = filedialog.askopenfilename(filetypes=[("Images", "*.png *.jpg *.jpeg *.webp *.bmp"), ("All files", "*.*")]),        if not path or self.chat_busy:,            return,        self._chat_add("YOU", f"[Image attached] {Path(path).name}"),        self.chat_busy = True,        self._chat_add("ATLAS", "Analyzing image…"),        threading.Thread(target=self._image_worker, args=(path,), daemon=True).start(),,    def _image_worker(self, path):,        try:,            answer = self.vision.describe(path),        except Exception as exc:,            answer = f"I couldn't read that image: {exc}",        self.after(0, lambda a=answer: self._finish_chat(a)),    def _chat_add(self, who, msg, store=True):
+    def attach_image(self):
+        path = filedialog.askopenfilename(filetypes=[("Images", "*.png *.jpg *.jpeg *.webp *.bmp"), ("All files", "*.*")])
+        if not path or self.chat_busy:
+            return
+        self._chat_add("YOU", f"[Image attached] {Path(path).name}")
+        self.chat_busy = True
+        self._chat_add("ATLAS", "Analyzing image…")
+        threading.Thread(target=self._image_worker, args=(path,), daemon=True).start()
+
+    def _image_worker(self, path):
+        try:
+            answer = self.vision.describe(path)
+        except Exception as exc:
+            answer = f"I couldn't read that image: {exc}"
+        self.after(0, lambda a=answer: self._finish_chat(a))
+    def _chat_add(self, who, msg, store=True):
         if store: self.chat_messages.append((who, msg))
         if not hasattr(self, "chat_box"): return
         self.chat_box.configure(state="normal"); self.chat_box.insert("end", f"\n{who}\n{msg}\n"); self.chat_box.configure(state="disabled"); self.chat_box.see("end")
