@@ -28,6 +28,8 @@ from .theme_store import DEFAULT_UI as CANONICAL_UI, load_ui as load_theme, save
 from student.learning_system import LearningSystem
 from student.growth_system import GrowthSystem
 from education.student_profile import EducationProfile
+from education.retrieval import retrieve
+from education.ingest import list_indexed_books, remove_indexed_book
 from atlas_core.backup import export_bundle as export_backup, restore_bundle
 
 try:
@@ -372,9 +374,37 @@ class AtlasGUI(ctk.CTk):
         self.show_chat(); self.chat_input.insert(0, f"{subject}: {prompt}"); self.chat_input.focus()
 
     def show_notes(self):
-        self.set_active("Notes"); self.clear(); self.header("Knowledge", "Your study shelf", "Capture explanations, summaries and useful discoveries.")
-        panel = self.card(self.main); panel.pack(fill="both", expand=True, padx=45, pady=(0, 28)); toolbar = ctk.CTkFrame(panel, fg_color="transparent"); toolbar.pack(fill="x", padx=20, pady=18); self.button(toolbar, "＋  New note", self.new_note, 125, True).pack(side="left"); self.button(toolbar, "Open PDF", self.import_pdf, 110).pack(side="left", padx=8); self.notes_box = ctk.CTkTextbox(panel, fg_color=self._c("surface_2"), text_color=self._c("text"), font=self._font(11), wrap="word"); self.notes_box.pack(fill="both", expand=True, padx=20, pady=(0,20)); self.notes_box.insert("1.0", "Your notes live here.\n\nUse Chat to understand a concept, then save the useful part here.")
-
+        self.set_active("Notes")
+        self.clear()
+        self.header("Knowledge", "Your study shelf", "Import, search and manage the local documents Atlas can use.")
+        panel = self.card(self.main); panel.pack(fill="both", expand=True, padx=45, pady=(0, 28))
+        toolbar = ctk.CTkFrame(panel, fg_color="transparent"); toolbar.pack(fill="x", padx=20, pady=16)
+        self.button(toolbar, "＋  New note", self.new_note, 125, True).pack(side="left")
+        self.button(toolbar, "Open PDF", self.import_pdf, 110).pack(side="left", padx=8)
+        search = ctk.CTkEntry(toolbar, placeholder_text="Search indexed documents…", height=40); search.pack(side="left", fill="x", expand=True, padx=8)
+        box = ctk.CTkTextbox(panel, fg_color=self._c("surface_2"), text_color=self._c("text"), font=self._font(10), wrap="word")
+        box.pack(fill="both", expand=True, padx=20, pady=(0, 20))
+        def render(results=None):
+            box.configure(state="normal"); box.delete("1.0", "end")
+            if results is not None:
+                if not results: box.insert("1.0", "No indexed material matched the search.")
+                for item in results:
+                    box.insert("end", f"[Page {item.get('page')}] {item.get('chapter') or 'Document'}\n{item.get('text','')}\nSource: {item.get('source','unknown')}\n\n")
+            else:
+                books = list_indexed_books()
+                if not books:
+                    box.insert("1.0", "No PDFs are indexed yet. Use Open PDF to add one.")
+                for book in books:
+                    status = book.get("status", "indexed")
+                    ocr = " · OCR required" if book.get("ocr_required") else ""
+                    box.insert("end", f"{book.get('title', 'Untitled')}\nClass {book.get('class')} · {book.get('subject')} · {status}{ocr}\nPages: {book.get('pages_indexed', 0)}/{book.get('pages_total', book.get('pages_indexed', 0))}\nID: {book.get('id','')}\n\n")
+            box.configure(state="disabled")
+        def run_search():
+            query = search.get().strip()
+            render(retrieve(query, limit=12)) if query else render()
+        self.button(toolbar, "Search", run_search, 95).pack(side="left")
+        search.bind("<Return>", lambda _e: run_search())
+        render()
     def new_note(self): self.notes_box.delete("1.0", "end"); self.notes_box.insert("1.0", f"# Study Note — {datetime.now():%d %b %Y}\n\n")
 
     def import_pdf(self):
