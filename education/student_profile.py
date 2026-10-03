@@ -19,6 +19,11 @@ DEFAULT_PROFILE = {
     "primary_class": None,
     "primary_subject": None,
     "teaching_mode": "adaptive",
+    "learning_preferences": {
+        "teaching_style": "step_by_step",
+        "session_minutes": 45,
+        "voice_enabled": True,
+    },
     "source_policy": "prefer indexed CBSE/NCERT material when available",
 }
 
@@ -65,6 +70,16 @@ class EducationProfile:
         data["primary_subject"] = subject
         _save(data)
         return True
+
+    def set_preferences(self, **preferences) -> Dict:
+        data = _load()
+        current = dict(data.get("learning_preferences", {}))
+        for key, value in preferences.items():
+            if value is not None:
+                current[key] = value
+        data["learning_preferences"] = current
+        _save(data)
+        return current
 
     def set_board(self, board: str) -> bool:
         board = board.strip()
