@@ -13,9 +13,9 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
-@dataclass(frozen=True)
+@dataclass
 class AtlasConfig:
-    """Immutable runtime configuration with safe local defaults."""
+    """Runtime configuration with safe local defaults."""
 
     ollama_base_url: str = "http://127.0.0.1:11434"
     ollama_model: str = "qwen2.5:1.5b"
