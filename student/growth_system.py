@@ -126,7 +126,7 @@ class GrowthSystem:
         habit_rates = []
         for habit in data["habits"]:
             checks = set(habit.get("checks", []))
-            recent = [x for x in checks if x >= _week_key()]
+            recent = [x for x in checks if x in _week_dates()]
             target = max(1, int(habit.get("target_per_week", 1)))
             habit_rates.append({
                 "name": habit.get("name", ""),
@@ -154,7 +154,13 @@ class GrowthSystem:
 
 
 def _week_key() -> str:
-    return datetime.now(timezone.utc).date().isoformat()[:8]
+    # Seven-day lookback avoids calendar/locale ambiguity and matches habit checks.
+    return (datetime.now(timezone.utc).date().toordinal() - 6)
+
+
+def _week_dates() -> set[str]:
+    today = datetime.now(timezone.utc).date()
+    return {(today.fromordinal(today.toordinal() - i)).isoformat() for i in range(7)}
 
 
 def reset() -> None:
