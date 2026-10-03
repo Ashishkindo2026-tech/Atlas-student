@@ -29,6 +29,7 @@ from student.learning_system import LearningSystem
 from student.growth_system import GrowthSystem
 from education.student_profile import EducationProfile
 from education.retrieval import retrieve
+from vision.vision_client import VisionClient
 from education.ingest import list_indexed_books, remove_indexed_book
 from atlas_core.backup import export_bundle as export_backup, restore_bundle
 
@@ -105,6 +106,7 @@ class AtlasGUI(ctk.CTk):
         self.learning = LearningSystem()
         self.growth = GrowthSystem()
         self.education_profile = EducationProfile()
+        self.vision = VisionClient()
         self._particles = []
         self._apply_window()
         self._build_shell()
@@ -303,9 +305,11 @@ class AtlasGUI(ctk.CTk):
             for who, msg in self.chat_messages: self._chat_add(who, msg, False)
         bottom = ctk.CTkFrame(panel, fg_color=self._c("surface_2"), corner_radius=17); bottom.pack(fill="x", padx=15, pady=(0, 15))
         self.chat_input = ctk.CTkEntry(bottom, placeholder_text="Ask Atlas anything…", height=48, fg_color="transparent", border_width=0, text_color=self._c("text"), font=self._font(10)); self.chat_input.pack(side="left", fill="x", expand=True, padx=14); self.chat_input.bind("<Return>", lambda _e: self.send_chat())
-        self.button(bottom, "🎙", self.show_voice, 48).pack(side="left", padx=4, pady=5); self.button(bottom, "Send  →", self.send_chat, 100, True).pack(side="right", padx=6, pady=5)
+        self.button(bottom, "🖼", self.attach_image, 48).pack(side="left", padx=4, pady=5)
+        self.button(bottom, "🎙", self.show_voice, 48).pack(side="left", padx=4, pady=5)
+        self.button(bottom, "Send  →", self.send_chat, 100, True).pack(side="right", padx=6, pady=5)
 
-    def _chat_add(self, who, msg, store=True):
+    def attach_image(self):,        path = filedialog.askopenfilename(filetypes=[("Images", "*.png *.jpg *.jpeg *.webp *.bmp"), ("All files", "*.*")]),        if not path or self.chat_busy:,            return,        self._chat_add("YOU", f"[Image attached] {Path(path).name}"),        self.chat_busy = True,        self._chat_add("ATLAS", "Analyzing image…"),        threading.Thread(target=self._image_worker, args=(path,), daemon=True).start(),,    def _image_worker(self, path):,        try:,            answer = self.vision.describe(path),        except Exception as exc:,            answer = f"I couldn't read that image: {exc}",        self.after(0, lambda a=answer: self._finish_chat(a)),    def _chat_add(self, who, msg, store=True):
         if store: self.chat_messages.append((who, msg))
         if not hasattr(self, "chat_box"): return
         self.chat_box.configure(state="normal"); self.chat_box.insert("end", f"\n{who}\n{msg}\n"); self.chat_box.configure(state="disabled"); self.chat_box.see("end")
