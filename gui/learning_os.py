@@ -24,7 +24,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from brain.agent import process
-from .theme_store import DEFAULT_UI as CANONICAL_UI, load_ui as load_theme, save_ui as save_theme, export_theme, import_theme
+from .theme_store import DEFAULT_UI as CANONICAL_UI, load_ui as load_theme, save_ui as save_theme
 from student.learning_system import LearningSystem
 from student.growth_system import GrowthSystem
 from education.student_profile import EducationProfile
@@ -36,8 +36,12 @@ try:
     from voice_engine import listen, speak, stop_speaking
     VOICE_AVAILABLE = True
 except Exception:
-    listen = speak = stop_speaking = None
-    VOICE_AVAILABLE = False
+    try:
+        from voice.voice_engine import listen, speak, stop_speaking
+        VOICE_AVAILABLE = True
+    except Exception:
+        listen = speak = stop_speaking = None
+        VOICE_AVAILABLE = False
 
 try:
     from memory.memory_manager import MemoryManager
