@@ -104,7 +104,10 @@ def listen():
             return ""
 
         except Exception as e:
-            return f"error: {e}"
+            global LAST_ERROR
+            LAST_ERROR = str(e)
+            print("STT ERROR:", e)
+            return ""
 
 
 # 🧠 OLLAMA CONNECTOR
