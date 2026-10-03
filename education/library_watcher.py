@@ -120,4 +120,4 @@ def scan_and_ingest(root: str | Path | None = None) -> list[dict]:
             results.append(ingest_pdf(pdf, class_level, subject))
         except Exception as exc:
             results.append({"path": str(pdf), "error": str(exc)})
-    return results\n
+    return results
