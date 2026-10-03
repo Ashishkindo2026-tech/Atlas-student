@@ -14,6 +14,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+mobile = [
+  "fastapi>=0.115,<1",
+  "uvicorn>=0.30,<1",
+  "pydantic>=2.8,<3",
+]
 dev = [
   "pytest>=8,<9",
   "ruff>=0.6,<1",
