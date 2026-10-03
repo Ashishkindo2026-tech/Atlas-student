@@ -77,8 +77,8 @@ class LearningSystem:
         key = f"{subject}::{topic}"
         data["topics"].setdefault(key, {
             "subject": subject, "topic": topic, "attempts": 0, "correct": 0,
-            "mastery": 0.0, "weak": False, "strong": False, "last_reviewed": None,
-            "next_review": None, "review_streak": 0,
+            "mastery": 0.0, "weak": False, "strong": False, "completed": False,
+            "last_reviewed": None, "next_review": None, "review_streak": 0,
         })
         _save(data)
         return True
@@ -92,7 +92,15 @@ class LearningSystem:
         state["minutes"] += minutes
         state["sessions"] += 1
         if topic:
-            self.register_topic(subject, topic)
+            clean_topic = topic.strip()
+            if clean_topic and clean_topic not in state["topics"]:
+                state["topics"].append(clean_topic)
+            key = f"{subject}::{clean_topic}"
+            data["topics"].setdefault(key, {
+                "subject": subject, "topic": clean_topic, "attempts": 0, "correct": 0,
+                "mastery": 0.0, "weak": False, "strong": False, "completed": False,
+                "last_reviewed": None, "next_review": None, "review_streak": 0,
+            })
         _save(data)
         return {"subject": subject, "minutes": minutes, "topic": topic.strip(), "at": _stamp()}
 
@@ -119,6 +127,22 @@ class LearningSystem:
     def topic(self, subject: str, topic: str) -> dict[str, Any]:
         self.register_topic(subject, topic)
         return _load()["topics"][f"{subject.strip()}::{topic.strip()}"]
+
+    def mark_topic_complete(self, subject: str, topic: str) -> bool:
+        self.register_topic(subject, topic)
+        data = _load()
+        key = f"{subject.strip()}::{topic.strip()}"
+        if key not in data["topics"]:
+            return False
+        data["topics"][key]["completed"] = True
+        _save(data)
+        return True
+
+    def completed_topics(self, subject: str | None = None) -> list[dict[str, Any]]:
+        rows = [x for x in _load()["topics"].values() if x.get("completed")]
+        if subject:
+            rows = [x for x in rows if x.get("subject", "").casefold() == subject.casefold()]
+        return rows
 
     def weak_topics(self, subject: str | None = None, limit: int = 10) -> list[dict[str, Any]]:
         rows = [x for x in _load()["topics"].values() if x.get("weak")]
