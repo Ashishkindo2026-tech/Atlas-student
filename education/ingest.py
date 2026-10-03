@@ -23,9 +23,20 @@ def _safe_name(value: str) -> str:
     return re.sub(r"[^a-zA-Z0-9._-]+", "_", value.strip()).strip("_") or "book"
 
 
+def _fingerprint(pdf_path: Path) -> str:
+    digest = hashlib.sha256()
+    with pdf_path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _book_id_from_fingerprint(pdf_path: Path, fingerprint: str) -> str:
+    return f"{_safe_name(pdf_path.stem)}-{fingerprint[:16]}"
+
+
 def _book_id(pdf_path: Path) -> str:
-    digest = hashlib.sha256(pdf_path.read_bytes()).hexdigest()[:16]
-    return f"{_safe_name(pdf_path.stem)}-{digest}"
+    return _book_id_from_fingerprint(pdf_path, _fingerprint(pdf_path))
 
 
 def _load_manifest() -> Dict:
@@ -97,15 +108,44 @@ def extract_pdf_chunks(
     return chunks
 
 
+def _find_existing_for_path(manifest: Dict, path: Path) -> list[dict]:
+    canonical = str(path.resolve())
+    return [
+        book for book in manifest.get("books", {}).values()
+        if str(Path(book.get("original_path", "")).expanduser().resolve()) == canonical
+    ]
+
+
+def _remove_records(manifest: Dict, records: list[dict]) -> None:
+    import shutil
+    for record in records:
+        stored = Path(record.get("stored_text", ""))
+        if stored.parent.exists() and stored.parent.is_dir():
+            shutil.rmtree(stored.parent)
+        manifest.get("books", {}).pop(record.get("id"), None)
+
+
 def ingest_pdf(pdf_path: str | Path, class_level: int, subject: str, title: str | None = None) -> Dict:
-    """Index a local PDF without copying the original into the repository."""
+    """Index a local PDF idempotently and report skipped/rebuilt work."""
     path = Path(pdf_path).expanduser().resolve()
     if not path.is_file() or path.suffix.lower() != ".pdf":
         raise ValueError("pdf_path must point to an existing .pdf file")
     if class_level not in (9, 10, 11, 12):
         raise ValueError("Core ingestion supports Classes 9-12")
 
-    book_id = _book_id(path)
+    fingerprint = _fingerprint(path)
+    manifest = _load_manifest()
+    existing = _find_existing_for_path(manifest, path)
+
+    for book in existing:
+        if book.get("fingerprint") == fingerprint:
+            return {**book, "status": "skipped", "reason": "unchanged"}
+
+    if existing:
+        _remove_records(manifest, existing)
+        _save_manifest(manifest)
+
+    book_id = _book_id_from_fingerprint(path, fingerprint)
     chunks = extract_pdf_chunks(
         path,
         source=f"{class_level}:{subject}",
@@ -128,6 +168,18 @@ def ingest_pdf(pdf_path: str | Path, class_level: int, subject: str, title: str 
                 "subject": chunk.subject,
             }, ensure_ascii=False) + "\n")
 
+    scanned_pages = []
+    total_pages = len(chunks)
+    try:
+        import fitz
+        with fitz.open(path) as document:
+            total_pages = len(document)
+            for page_number, page in enumerate(document, start=1):
+                if not page.get_text("text").strip():
+                    scanned_pages.append(page_number)
+    except Exception:
+        pass
+
     metadata = {
         "id": book_id,
         "title": title or path.stem,
@@ -135,13 +187,16 @@ def ingest_pdf(pdf_path: str | Path, class_level: int, subject: str, title: str 
         "subject": subject,
         "original_path": str(path),
         "stored_text": str(text_path),
+        "pages_total": total_pages,
         "pages_indexed": len(chunks),
+        "scanned_pages": scanned_pages,
+        "ocr_required": bool(scanned_pages),
+        "fingerprint": fingerprint,
+        "status": "indexed",
     }
-    manifest = _load_manifest()
     manifest.setdefault("books", {})[book_id] = metadata
     _save_manifest(manifest)
     return metadata
-
 
 def list_indexed_books() -> List[Dict]:
     return list(_load_manifest().get("books", {}).values())
