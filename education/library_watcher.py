@@ -100,37 +100,24 @@ def _store_fingerprint(metadata: dict, fingerprint: str) -> None:
 
 
 def scan_and_ingest(root: str | Path | None = None) -> list[dict]:
-    """Detect new/changed PDFs and incrementally update their local indexes.
-
-    New files are indexed, unchanged files are skipped, and changed files are
-    re-indexed. The original PDF is never modified or deleted.
-    """
+    """Detect new, unchanged, changed, and deleted PDFs incrementally."""
+    scan_root = Path(root).expanduser().resolve() if root else USER_ROOT
+    candidates = scan_library(scan_root)
+    candidate_paths = {str(pdf.resolve()) for pdf, _class, _subject in candidates}
     results = []
-    for pdf, class_level, subject in scan_library(root):
-        canonical = pdf.resolve()
-        fingerprint = _fingerprint(canonical)
-        existing = _matching_books(canonical)
 
-        if existing:
-            if any(book.get("fingerprint") == fingerprint for book in existing):
-                continue
-
-            # Legacy indexes did not store fingerprints. Keep the existing
-            # index on first scan and backfill its fingerprint so later edits
-            # can be detected without forcing an unnecessary rebuild.
-            if all(not book.get("fingerprint") for book in existing):
-                _record_fingerprint(existing, fingerprint)
-                continue
-
-            # A fingerprint mismatch means the original PDF changed.
-            for book in existing:
-                remove_indexed_book(book["id"])
-
+    for book in list(list_indexed_books()):
+        source = str(Path(book.get("original_path", "")).expanduser().resolve())
         try:
-            metadata = ingest_pdf(pdf, class_level, subject)
-            if isinstance(metadata, dict):
-                _store_fingerprint(metadata, fingerprint)
-            results.append(metadata)
+            inside = Path(source).is_relative_to(scan_root)
+        except AttributeError:
+            inside = str(source).startswith(str(scan_root))
+        if inside and source not in candidate_paths and remove_indexed_book(book.get("id", "")):
+            results.append({"id": book.get("id"), "path": source, "status": "removed"})
+
+    for pdf, class_level, subject in candidates:
+        try:
+            results.append(ingest_pdf(pdf, class_level, subject))
         except Exception as exc:
             results.append({"path": str(pdf), "error": str(exc)})
-    return results
+    return results\n
