@@ -5,6 +5,11 @@ import asyncio
 import edge_tts
 import pygame
 import os
+import time
+import threading
+
+LAST_ERROR = ""
+_stop_event = threading.Event()
 # 🎤 TEXT TO SPEECH (FRIDAY-STYLE VOICE)
 def speak(text):
 
@@ -32,17 +37,33 @@ def speak(text):
         pygame.mixer.music.load(file)
         pygame.mixer.music.play()
 
-        while pygame.mixer.music.get_busy():
-            pass
+        while pygame.mixer.music.get_busy() and not _stop_event.is_set():
+            time.sleep(0.05)
 
         pygame.mixer.quit()
 
         if os.path.exists(file):
             os.remove(file)
 
-    except Exception as e:
+        if _stop_event.is_set():
+            _stop_event.clear()
 
+    except Exception as e:
+        global LAST_ERROR
+        LAST_ERROR = str(e)
         print("TTS ERROR:", e)
+        raise
+
+
+def stop_speaking():
+    """Stop current local TTS playback when the backend supports it."""
+    _stop_event.set()
+    try:
+        if pygame.mixer.get_init():
+            pygame.mixer.music.stop()
+            pygame.mixer.quit()
+    except Exception:
+        pass
 
 
 # 🎧 SPEECH TO TEXT
