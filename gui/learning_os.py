@@ -442,13 +442,27 @@ class AtlasGUI(ctk.CTk):
         profile = self.education_profile.data()
         ctk.CTkLabel(panel, text="STUDENT PROFILE", text_color=self._c("accent"), font=self._font(9, "bold")).pack(anchor="w", padx=25, pady=(24, 8))
         form = ctk.CTkFrame(panel, fg_color="transparent"); form.pack(fill="x", padx=20)
+        name_entry = ctk.CTkEntry(form, placeholder_text="Your name", height=40)
+        try:
+            current_name = self.memory.recall("name") if self.memory else ""
+        except Exception:
+            current_name = ""
+        if current_name:
+            name_entry.insert(0, str(current_name))
+        name_entry.pack(side="left", fill="x", expand=True, padx=5)
         class_entry = ctk.CTkEntry(form, placeholder_text="Class (1-12)", height=40); class_entry.insert(0, str(profile.get("primary_class") or "")); class_entry.pack(side="left", fill="x", expand=True, padx=5)
         subject_entry = ctk.CTkEntry(form, placeholder_text="Primary subject", height=40); subject_entry.insert(0, str(profile.get("primary_subject") or "")); subject_entry.pack(side="left", fill="x", expand=True, padx=5)
+        prefs = profile.get("learning_preferences", {})
+        style_entry = ctk.CTkEntry(form, placeholder_text="Teaching style", height=40); style_entry.insert(0, str(prefs.get("teaching_style", "step_by_step"))); style_entry.pack(side="left", fill="x", expand=True, padx=5)
         def save_profile():
             try:
+                name = name_entry.get().strip()
+                if name and self.memory:
+                    self.memory.remember("name", name, source="user_settings", importance=0.95)
                 if class_entry.get().strip():
                     self.education_profile.set_class(int(class_entry.get().strip()))
                 self.education_profile.set_subject(subject_entry.get().strip())
+                self.education_profile.set_preferences(teaching_style=style_entry.get().strip() or "step_by_step")
                 messagebox.showinfo("Atlas", "Student profile saved locally.", parent=self)
             except Exception as exc:
                 messagebox.showerror("Atlas", f"Could not save profile:\n{exc}", parent=self)
