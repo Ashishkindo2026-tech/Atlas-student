@@ -14,7 +14,7 @@ import time
 from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
-from tkinter import colorchooser, filedialog, messagebox
+from tkinter import colorchooser, filedialog, messagebox, simpledialog
 
 import customtkinter as ctk
 import tkinter as tk
@@ -24,6 +24,11 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from brain.agent import process
+from .theme_store import DEFAULT_UI as CANONICAL_UI, load_ui as load_theme, save_ui as save_theme, export_theme, import_theme
+from student.learning_system import LearningSystem
+from student.growth_system import GrowthSystem
+from education.student_profile import EducationProfile
+from atlas_core.backup import export_bundle as export_backup, restore_bundle
 
 try:
     from voice_engine import listen, speak
@@ -47,34 +52,7 @@ try:
 except Exception:
     ingest_pdf = None
 
-DEFAULT_UI = {
-    "background": "#070A12",
-    "background_2": "#10152A",
-    "sidebar": "#0A0D17",
-    "surface": "#111625",
-    "surface_2": "#171D2F",
-    "surface_hover": "#202943",
-    "text": "#F7F8FC",
-    "muted": "#929AB0",
-    "accent": "#8EA7FF",
-    "accent_2": "#B58CFF",
-    "success": "#72D7AD",
-    "warning": "#F1C56D",
-    "danger": "#EF8E9A",
-    "border": "#293149",
-    "font": "Segoe UI",
-    "font_size": 11,
-    "title_size": 32,
-    "radius": 22,
-    "sidebar_width": 250,
-    "ui_scale": 1.0,
-    "opacity": 1.0,
-    "animation_ms": 180,
-    "background_style": "Aurora",
-    "show_sidebar": True,
-    "show_status": True,
-    "show_date": True,
-}
+DEFAULT_UI = CANONICAL_UI
 
 APPDATA = Path(os.environ.get("APPDATA", Path.home())) / "AtlasStudent"
 UI_FILE = APPDATA / "ui.json"
@@ -82,21 +60,11 @@ FIRST_USE_FILE = APPDATA / "first_use.json"
 
 
 def load_ui():
-    try:
-        APPDATA.mkdir(parents=True, exist_ok=True)
-        if UI_FILE.exists():
-            data = json.loads(UI_FILE.read_text(encoding="utf-8"))
-            out = deepcopy(DEFAULT_UI)
-            out.update({k: v for k, v in data.items() if k in out})
-            return out
-    except Exception:
-        pass
-    return deepcopy(DEFAULT_UI)
+    return load_theme()
 
 
 def save_ui(data):
-    APPDATA.mkdir(parents=True, exist_ok=True)
-    UI_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    return save_theme(data)
 
 
 def days_used():
@@ -128,6 +96,9 @@ class AtlasGUI(ctk.CTk):
         self.chat_messages: list[tuple[str, str]] = []
         self.progress = ProgressManager() if ProgressManager else None
         self.memory = MemoryManager() if MemoryManager else None
+        self.learning = LearningSystem()
+        self.growth = GrowthSystem()
+        self.education_profile = EducationProfile()
         self._particles = []
         self._apply_window()
         self._build_shell()
@@ -189,7 +160,7 @@ class AtlasGUI(ctk.CTk):
         groups = [
             ("YOUR ATLAS", [("⌂", "Home", self.show_home), ("◈", "Chat", self.show_chat), ("◉", "Voice", self.show_voice)]),
             ("LEARNING", [("Φ", "Physics", lambda: self.show_subject("Physics")), ("∑", "Maths", lambda: self.show_subject("Mathematics")), ("⚗", "Chemistry", lambda: self.show_subject("Chemistry")), ("▣", "Notes", self.show_notes), ("◇", "Practice", self.show_practice), ("◫", "Planner", self.show_planner)]),
-            ("INSIGHTS", [("◌", "Memory", self.show_memory), ("▥", "Progress", self.show_progress)]),
+            ("INSIGHTS", [("◌", "Memory", self.show_memory), ("▥", "Progress", self.show_progress), ("⚙", "Settings", self.show_settings)]),
         ]
         for heading, items in groups:
             ctk.CTkLabel(self.rail, text=heading, text_color="#5F6880", font=self._font(8, "bold")).pack(anchor="w", padx=21, pady=(5, 6))
