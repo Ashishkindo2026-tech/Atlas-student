@@ -70,11 +70,18 @@ class MicroCheckpointTests(unittest.TestCase):
             with patch("atlas_core.backup.ROOT", project), patch(
                 "atlas_core.backup.DEFAULT_ROOTS",
                 (memory_dir, student_dir),
-            ):
+            ), patch(
+                "gui.theme_store.load_ui",
+                return_value={"accent": "#ABCDEF", "font": "Segoe UI"},
+            ), patch(
+                "gui.theme_store.save_ui",
+            ) as save_theme:
                 export_bundle(backup)
                 (memory_dir / "sample.json").write_text("{}", encoding="utf-8")
                 restored = restore_bundle(backup)
                 self.assertIn("memory/sample.json", restored)
+                self.assertIn("settings/ui.json", restored)
+                save_theme.assert_called_once()
                 self.assertEqual(json.loads((memory_dir / "sample.json").read_text())["name"], "Atlas")
 
     def test_service_registry_is_failure_safe(self):
