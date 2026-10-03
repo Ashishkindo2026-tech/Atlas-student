@@ -31,10 +31,10 @@ from education.student_profile import EducationProfile
 from atlas_core.backup import export_bundle as export_backup, restore_bundle
 
 try:
-    from voice_engine import listen, speak
+    from voice_engine import listen, speak, stop_speaking
     VOICE_AVAILABLE = True
 except Exception:
-    listen = speak = None
+    listen = speak = stop_speaking = None
     VOICE_AVAILABLE = False
 
 try:
@@ -328,13 +328,28 @@ class AtlasGUI(ctk.CTk):
         ctk.CTkLabel(panel, text="ATLAS IS LISTENING FOR YOU", text_color=self._c("text"), font=self._font(18, "bold")).pack()
         self.voice_status = ctk.CTkLabel(panel, text="READY · LOCAL VOICE" if VOICE_AVAILABLE else "VOICE ENGINE UNAVAILABLE", text_color=self._c("success") if VOICE_AVAILABLE else self._c("danger"), font=self._font(9, "bold")); self.voice_status.pack(pady=8)
         self.voice_hint = ctk.CTkLabel(panel, text="Press once, speak normally, and Atlas will answer.", text_color=self._c("muted"), font=self._font(10)); self.voice_hint.pack()
-        self.listen_btn = self.button(panel, "◉  START LISTENING", self.start_voice, 230, True, 48); self.listen_btn.pack(pady=25)
+        controls = ctk.CTkFrame(panel, fg_color="transparent"); controls.pack(pady=25)
+        self.listen_btn = self.button(controls, "◉  START LISTENING", self.start_voice, 230, True, 48); self.listen_btn.pack(side="left", padx=6)
+        self.stop_voice_btn = self.button(controls, "■  STOP SPEAKING", self.stop_voice, 170, False, 48); self.stop_voice_btn.pack(side="left", padx=6)
 
     def start_voice(self):
         if self.voice_busy: return
         if not VOICE_AVAILABLE: self.voice_status.configure(text="VOICE ENGINE UNAVAILABLE", text_color=self._c("danger")); return
         self.voice_busy = True; self.listen_btn.configure(state="disabled", text="◉  LISTENING…"); self.voice_status.configure(text="LISTENING", text_color=self._c("accent")); threading.Thread(target=self._voice_worker, daemon=True).start()
 
+    def stop_voice(self):
+        if stop_speaking:
+            try:
+                stop_speaking()
+            except Exception:
+                pass
+        self.voice_busy = False
+        if hasattr(self, "voice_status"):
+            self.voice_status.configure(text="READY · LOCAL VOICE", text_color=self._c("success"))
+        if hasattr(self, "voice_hint"):
+            self.voice_hint.configure(text="Speech stopped. Ready for your next question.")
+        if hasattr(self, "listen_btn"):
+            self.listen_btn.configure(state="normal", text="◉  START LISTENING")
     def _voice_worker(self):
         try:
             text = listen()
