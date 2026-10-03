@@ -53,10 +53,12 @@ def export_bundle(path: str | Path) -> Path:
             files[rel] = json.loads(source.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             continue
+    from gui.theme_store import load_ui
     bundle = {
         "schema": SCHEMA,
         "version": VERSION,
         "exported_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "settings": load_ui(),
         "files": files,
     }
     target.write_text(json.dumps(bundle, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -69,6 +71,7 @@ def validate_bundle(bundle: dict[str, Any]) -> bool:
         and bundle.get("schema") == SCHEMA
         and int(bundle.get("version", -1)) == VERSION
         and isinstance(bundle.get("files"), dict)
+        and isinstance(bundle.get("settings", {}), dict)
     )
 
 
@@ -78,6 +81,10 @@ def restore_bundle(path: str | Path, *, replace: bool = True) -> list[str]:
     if not validate_bundle(bundle):
         raise ValueError("Invalid Atlas backup bundle.")
     restored: list[str] = []
+    if "settings" in bundle:
+        from gui.theme_store import save_ui
+        save_ui(bundle["settings"])
+        restored.append("settings/ui.json")
     for rel, value in bundle["files"].items():
         target = (ROOT / rel).resolve()
         try:
