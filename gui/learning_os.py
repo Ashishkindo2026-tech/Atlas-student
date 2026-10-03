@@ -364,14 +364,53 @@ class AtlasGUI(ctk.CTk):
 
     def import_pdf(self):
         path = filedialog.askopenfilename(filetypes=[("PDF files", "*.pdf")])
-        if not path: return
-        if not ingest_pdf: messagebox.showerror("Atlas Library", "PDF ingestion is unavailable."); return
-        messagebox.showinfo("Atlas Library", "PDF import is available through the education library.")
+        if not path:
+            return
+        if not ingest_pdf:
+            messagebox.showerror("Atlas Library", "PDF ingestion is unavailable.", parent=self)
+            return
+        class_level = simpledialog.askinteger("Atlas Library", "Class (9-12):", minvalue=9, maxvalue=12, parent=self)
+        if class_level is None:
+            return
+        subject = simpledialog.askstring("Atlas Library", "Subject:", initialvalue="Physics", parent=self)
+        if not subject or not subject.strip():
+            return
+        try:
+            result = ingest_pdf(path, class_level, subject.strip())
+            if result.get("status") == "skipped":
+                messagebox.showinfo("Atlas Library", f"Already indexed — no re-index needed.\n\n{result.get('title', Path(path).stem)}", parent=self)
+            else:
+                extra = f"\nScanned pages needing OCR: {len(result.get('scanned_pages', []))}" if result.get("ocr_required") else ""
+                messagebox.showinfo("Atlas Library", f"Indexed {result.get('title', Path(path).stem)}\nPages indexed: {result.get('pages_indexed', 0)}{extra}", parent=self)
+        except Exception as exc:
+            messagebox.showerror("Atlas Library", f"Import failed:\n{exc}", parent=self)
 
     def show_practice(self):
-        self.set_active("Practice"); self.clear(); self.header("Practice Lab", "Turn knowledge into skill", "Choose a subject and let Atlas generate the next useful challenge.")
-        panel = self.card(self.main); panel.pack(fill="both", expand=True, padx=45, pady=(0,28)); ctk.CTkLabel(panel, text="WHAT DO YOU WANT TO PRACTICE?", text_color=self._c("accent"), font=self._font(9,"bold")).pack(anchor="w", padx=28, pady=(28,7)); ctk.CTkLabel(panel, text="Pick a subject", text_color=self._c("text"), font=self._font(24,"bold")).pack(anchor="w", padx=28); row=ctk.CTkFrame(panel,fg_color="transparent"); row.pack(anchor="w", padx=23, pady=24)
-        for s in ["Physics","Mathematics","Chemistry"]: self.button(row,s,lambda x=s:self.open_subject_chat(x,"Give me one practice question at an appropriate difficulty."),160,s=="Physics").pack(side="left", padx=5)
+        self.set_active("Practice")
+        self.clear()
+        self.header("Practice Lab", "Turn knowledge into skill", "Atlas adapts difficulty from your actual attempts.")
+        panel = self.card(self.main)
+        panel.pack(fill="both", expand=True, padx=45, pady=(0, 28))
+        ctk.CTkLabel(panel, text="PRACTICE BUILDER", text_color=self._c("accent"), font=self._font(9, "bold")).pack(anchor="w", padx=28, pady=(28, 7))
+        row = ctk.CTkFrame(panel, fg_color="transparent"); row.pack(fill="x", padx=24, pady=14)
+        subject = ctk.CTkOptionMenu(row, values=["Physics", "Mathematics", "Chemistry"], width=170); subject.pack(side="left")
+        topic = ctk.CTkEntry(row, placeholder_text="Topic / chapter", height=42); topic.pack(side="left", fill="x", expand=True, padx=10)
+        count = ctk.CTkOptionMenu(row, values=["5", "10", "15"], width=80); count.set("5"); count.pack(side="left")
+        output = ctk.CTkTextbox(panel, fg_color=self._c("surface_2"), text_color=self._c("text"), font=self._font(10), wrap="word")
+        output.pack(fill="both", expand=True, padx=24, pady=(4, 18))
+        def build():
+            topic_name = topic.get().strip()
+            if not topic_name:
+                output.delete("1.0", "end"); output.insert("1.0", "Enter a topic first."); return
+            subject_name = subject.get()
+            state = self.learning.topic(subject_name, topic_name)
+            items = self.learning.practice_plan(subject_name, topic_name, int(count.get()))
+            output.delete("1.0", "end")
+            output.insert("1.0", f"{subject_name} · {topic_name}\nCurrent mastery: {state.get('mastery', 0)}%\nNext difficulty: {self.learning.next_difficulty(subject_name, topic_name)}\n\n")
+            for item in items:
+                output.insert("end", f"{item['index']}. Difficulty {item['difficulty']} · Practice question\n")
+            output.insert("end", "\nUse Chat to generate the actual questions; after each answer, record the result so Atlas can adapt.")
+        self.button(row, "Build plan", build, 115, True).pack(side="left", padx=(10, 0))
 
     def show_planner(self):
         self.set_active("Planner"); self.clear(); self.header("Planning", "Your study rhythm", "A simple plan that keeps the important things moving.")
@@ -380,22 +419,104 @@ class AtlasGUI(ctk.CTk):
             row=ctk.CTkFrame(panel,fg_color=self._c("surface_2"),corner_radius=14); row.pack(fill="x",padx=25,pady=6); ctk.CTkLabel(row,text=time_,text_color=self._c("accent"),font=self._font(10,"bold"),width=75).pack(side="left",padx=14,pady=14); ctk.CTkLabel(row,text=task,text_color=self._c("text"),font=self._font(10,"bold")).pack(side="left")
         self.button(panel,"Ask Atlas to build a plan",lambda:self.open_subject_chat("Study","Build me a focused study plan."),220,True).pack(anchor="w",padx=25,pady=22)
 
+    def show_settings(self):
+        self.set_active("Settings")
+        self.clear()
+        self.header("Settings", "Control your Atlas", "Profile, privacy, theme and local backups live here.")
+        panel = self.card(self.main); panel.pack(fill="both", expand=True, padx=45, pady=(0, 28))
+        profile = self.education_profile.data()
+        ctk.CTkLabel(panel, text="STUDENT PROFILE", text_color=self._c("accent"), font=self._font(9, "bold")).pack(anchor="w", padx=25, pady=(24, 8))
+        form = ctk.CTkFrame(panel, fg_color="transparent"); form.pack(fill="x", padx=20)
+        class_entry = ctk.CTkEntry(form, placeholder_text="Class (1-12)", height=40); class_entry.insert(0, str(profile.get("primary_class") or "")); class_entry.pack(side="left", fill="x", expand=True, padx=5)
+        subject_entry = ctk.CTkEntry(form, placeholder_text="Primary subject", height=40); subject_entry.insert(0, str(profile.get("primary_subject") or "")); subject_entry.pack(side="left", fill="x", expand=True, padx=5)
+        def save_profile():
+            try:
+                if class_entry.get().strip():
+                    self.education_profile.set_class(int(class_entry.get().strip()))
+                self.education_profile.set_subject(subject_entry.get().strip())
+                messagebox.showinfo("Atlas", "Student profile saved locally.", parent=self)
+            except Exception as exc:
+                messagebox.showerror("Atlas", f"Could not save profile:\n{exc}", parent=self)
+        self.button(panel, "Save profile", save_profile, 140, True).pack(anchor="w", padx=25, pady=14)
+        ctk.CTkLabel(panel, text="LOCAL DATA", text_color=self._c("accent"), font=self._font(9, "bold")).pack(anchor="w", padx=25, pady=(10, 8))
+        data_row = ctk.CTkFrame(panel, fg_color="transparent"); data_row.pack(fill="x", padx=20)
+        def do_export():
+            path=filedialog.asksaveasfilename(defaultextension=".atlas-backup.json", filetypes=[("Atlas backup","*.atlas-backup.json"),("JSON","*.json")], parent=self)
+            if path:
+                try:
+                    export_backup(path); messagebox.showinfo("Atlas", "Backup exported.", parent=self)
+                except Exception as exc: messagebox.showerror("Atlas", f"Backup failed:\n{exc}", parent=self)
+        def do_restore():
+            path=filedialog.askopenfilename(filetypes=[("Atlas backup","*.atlas-backup.json *.json"),("JSON","*.json")], parent=self)
+            if path and messagebox.askyesno("Restore Atlas", "Restore local Atlas data from this backup?", parent=self):
+                try:
+                    restored=restore_bundle(path)
+                    messagebox.showinfo("Atlas", f"Restored {len(restored)} JSON files. Restart Atlas to reload all services.", parent=self)
+                except Exception as exc: messagebox.showerror("Atlas", f"Restore failed:\n{exc}", parent=self)
+        self.button(data_row, "Export backup", do_export, 140).pack(side="left", padx=5)
+        self.button(data_row, "Restore backup", do_restore, 140).pack(side="left", padx=5)
+        ctk.CTkLabel(panel, text="THEME", text_color=self._c("accent"), font=self._font(9, "bold")).pack(anchor="w", padx=25, pady=(22, 8))
+        self.button(panel, "Open Atlas Studio", self.show_studio, 170, True).pack(anchor="w", padx=25)
+        ctk.CTkLabel(panel, text="Theme changes in Studio are live and saved locally; no restart is needed for the open window.", text_color=self._c("muted"), font=self._font(9), wraplength=650, justify="left").pack(anchor="w", padx=25, pady=10)
+
     def show_memory(self):
-        self.set_active("Memory"); self.clear(); self.header("Long-term memory", "What Atlas remembers", "Inspect the durable information connected to your learning.")
-        panel=self.card(self.main); panel.pack(fill="both",expand=True,padx=45,pady=(0,28)); box=ctk.CTkTextbox(panel,fg_color=self._c("surface_2"),text_color=self._c("text"),font=self._font(10)); box.pack(fill="both",expand=True,padx=20,pady=20)
-        try:
-            facts=self.memory.get_facts() if self.memory else {}; important=self.memory.get_important_memories() if self.memory else []; lines=["FACTS",""]+[f"• {k}: {v}" for k,v in facts.items()]+["","IMPORTANT MEMORIES",""]+[f"• {x}" for x in important]; box.insert("1.0", "\n".join(lines) if any(lines[2:]) else "No durable memories saved yet.")
-        except Exception as exc: box.insert("1.0", f"Memory interface unavailable: {exc}")
-        box.configure(state="disabled")
+        self.set_active("Memory")
+        self.clear()
+        self.header("Long-term memory", "What Atlas remembers", "Search, inspect, and forget durable memories with explicit user control.")
+        panel = self.card(self.main); panel.pack(fill="both", expand=True, padx=45, pady=(0, 28))
+        toolbar = ctk.CTkFrame(panel, fg_color="transparent"); toolbar.pack(fill="x", padx=20, pady=15)
+        query = ctk.CTkEntry(toolbar, placeholder_text="Search memory…", height=40); query.pack(side="left", fill="x", expand=True)
+        box = ctk.CTkTextbox(panel, fg_color=self._c("surface_2"), text_color=self._c("text"), font=self._font(10)); box.pack(fill="both", expand=True, padx=20, pady=(0, 15))
+        def render(items=None):
+            try:
+                records = items if items is not None else self.memory.get_all_records(include_archived=False)
+                box.configure(state="normal"); box.delete("1.0", "end")
+                if not records:
+                    box.insert("1.0", "No active durable memories.")
+                else:
+                    for item in records:
+                        label = item.get("key") or item.get("type", "memory")
+                        box.insert("end", f"[{label}]\n{item.get('content', item.get('value', ''))}\nID: {item.get('id', '')}\n\n")
+                box.configure(state="disabled")
+            except Exception as exc:
+                box.configure(state="normal"); box.delete("1.0", "end"); box.insert("end", f"Memory interface unavailable: {exc}"); box.configure(state="disabled")
+        def search():
+            text = query.get().strip()
+            render(self.memory.search(text, limit=20) if text and self.memory else [])
+        def forget():
+            text = query.get().strip()
+            if not text or not self.memory:
+                return
+            if not messagebox.askyesno("Forget memory", f"Forget memories matching:\n\n{text}", parent=self):
+                return
+            self.memory.archive_matching(text)
+            render()
+        self.button(toolbar, "Search", search, 100, True).pack(side="left", padx=7)
+        self.button(toolbar, "Forget match", forget, 120).pack(side="left")
+        render()
 
     def show_progress(self):
-        self.set_active("Progress"); self.clear(); self.header("Learning analytics", "See your momentum", "Progress should tell you what to do next — not just show numbers.")
-        panel=self.card(self.main); panel.pack(fill="both",expand=True,padx=45,pady=(0,28)); data=self.progress.data() if self.progress else {}; signals=data.get("learning_signals",[]) if isinstance(data,dict) else []
-        ctk.CTkLabel(panel,text=f"{len(signals)} learning signals recorded",text_color=self._c("muted"),font=self._font(10)).pack(anchor="w",padx=26,pady=(25,18))
-        for s,v in [("Physics",.72),("Mathematics",.81),("Chemistry",.76)]: self._progress_row(panel,s,v)
+        self.set_active("Progress")
+        self.clear()
+        self.header("Learning analytics", "See your momentum", "Numbers are derived from actual sessions, attempts, revisions and goals.")
+        panel = self.card(self.main); panel.pack(fill="both", expand=True, padx=45, pady=(0, 28))
+        data = self.learning.data()
+        attempts = data.get("attempts", [])
+        revisions = data.get("revisions", [])
+        ctk.CTkLabel(panel, text=f"{len(attempts)} practice attempts · {len(revisions)} revision events", text_color=self._c("muted"), font=self._font(10)).pack(anchor="w", padx=26, pady=(22, 14))
+        topics = list(data.get("topics", {}).values())
+        if not topics:
+            ctk.CTkLabel(panel, text="No topic attempts recorded yet. Start with Practice.", text_color=self._c("muted"), font=self._font(10)).pack(anchor="w", padx=26, pady=18)
+        for item in sorted(topics, key=lambda x: x.get("mastery", 0))[:10]:
+            self._progress_row(panel, f"{item.get('subject')} · {item.get('topic')}", float(item.get("mastery", 0)) / 100)
+        insights = self.growth.insights()
+        ctk.CTkLabel(panel, text=f"Growth: {insights.get('active_goals', 0)} active goals · {insights.get('history_events', 0)} history events", text_color=self._c("muted"), font=self._font(9)).pack(anchor="w", padx=26, pady=12)
 
     def _progress_row(self,parent,subject,value):
-        row=ctk.CTkFrame(parent,fg_color="transparent"); row.pack(fill="x",padx=26,pady=8); ctk.CTkLabel(row,text=subject,text_color=self._c("text"),font=self._font(10,"bold")).pack(side="left"); ctk.CTkLabel(row,text=f"{int(value*100)}%",text_color=self._c("muted"),font=self._font(9)).pack(side="right"); b=ctk.CTkProgressBar(parent,height=7,progress_color=self._c("accent"),fg_color=self._c("border")); b.pack(fill="x",padx=26); b.set(value)
+        row=ctk.CTkFrame(parent,fg_color="transparent"); row.pack(fill="x",padx=26,pady=8)
+        ctk.CTkLabel(row,text=subject,text_color=self._c("text"),font=self._font(10,"bold")).pack(side="left")
+        ctk.CTkLabel(row,text=f"{int(value*100)}%",text_color=self._c("muted"),font=self._font(9)).pack(side="right")
+        b=ctk.CTkProgressBar(parent,height=7,progress_color=self._c("accent"),fg_color=self._c("border")); b.pack(fill="x",padx=26); b.set(max(0,min(1,value)))
 
     # ---------------- Studio: unlocked after seven days ----------------
     def show_studio(self):
