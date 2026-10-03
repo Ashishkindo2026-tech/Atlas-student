@@ -27,15 +27,10 @@ class VisionClient:
         file = Path(path).expanduser().resolve()
         if not file.is_file():
             raise FileNotFoundError(str(file))
-        if file.suffix.lower() not in ALLOWED_EXTENSIONS:
-            raise ValueError(f"Unsupported image type: {file.suffix or 'none'}")
         if file.stat().st_size <= 0:
             raise ValueError("Image file is empty or unreadable.")
         if file.stat().st_size > MAX_IMAGE_BYTES:
             raise ValueError("Image is larger than the 12 MB local safety limit.")
-        mime, _ = mimetypes.guess_type(file.name)
-        if not mime or not mime.startswith("image/"):
-            raise ValueError("The selected file is not recognized as an image.")
         try:
             from PIL import Image
             with Image.open(file) as image:
