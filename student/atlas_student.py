@@ -73,7 +73,7 @@ class AtlasStudentSystem:
         text = command.strip(); lower = text.lower()
 
         if lower.startswith("student practice questions "):
-            parts = text[25:].split("|", 2)
+            parts = text[27:].split("|", 2)
             if len(parts) >= 2:
                 count = int(parts[2]) if len(parts) == 3 and parts[2].strip().isdigit() else 5
                 questions = self.adaptive.generate_questions(parts[0], parts[1], count)
