@@ -95,7 +95,10 @@ class AtlasStudentSystem:
             if len(parts) >= 3:
                 correct = parts[2].strip().lower() in {"yes", "true", "correct", "1"}
                 difficulty = int(parts[3]) if len(parts) == 4 and parts[3].strip().isdigit() else 1
-                return json.dumps(self.learning.record_attempt(parts[0], parts[1], correct, difficulty), indent=2)
+                result = self.learning.record_attempt(parts[0], parts[1], correct, difficulty)
+                if not correct:
+                    self.growth.record_history("mistake", parts[0].strip(), parts[1].strip(), "Incorrect practice attempt")
+                return json.dumps(result, indent=2)
             return "Use: student learning attempt <subject>|<topic>|<correct>|<difficulty>"
         if lower.startswith("student revise "):
             parts = text[15:].split("|", 1)
