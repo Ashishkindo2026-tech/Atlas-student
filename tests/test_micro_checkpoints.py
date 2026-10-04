@@ -10,6 +10,7 @@ from atlas_core.service_registry import ServiceRegistry
 from gui.theme_store import normalize_theme
 from student.growth_system import GrowthSystem
 from student.learning_system import LearningSystem
+from student.atlas_student import AtlasStudentSystem
 
 
 class MicroCheckpointTests(unittest.TestCase):
@@ -42,6 +43,29 @@ class MicroCheckpointTests(unittest.TestCase):
                 engine.schedule_revision("Physics", "Friction")
                 due = engine.due_revisions(now=datetime.now(timezone.utc) + timedelta(days=2))
                 self.assertTrue(due)
+
+    def test_student_practice_and_evidence_loop(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            learning_state = Path(tmp) / "learning_state.json"
+            intelligence_state = Path(tmp) / "intelligence.json"
+            with patch("student.learning_system.FILE", learning_state), patch(
+                "brain.student_intelligence.FILE", intelligence_state
+            ):
+                system = AtlasStudentSystem()
+                raw = system.handle("student practice questions Physics|Friction|3")
+                payload = json.loads(raw)
+                self.assertEqual(len(payload["questions"]), 3)
+                self.assertEqual(payload["difficulty"], 1)
+
+                system.handle("student learning attempt Physics|Friction|no|1")
+                system.handle("student learning attempt Physics|Friction|no|1")
+                state = system.learning.topic("Physics", "Friction")
+                self.assertTrue(state["weak"])
+                self.assertEqual(state["mastery"], 0.0)
+
+                system.handle("student learning attempt Physics|Friction|yes|2")
+                self.assertEqual(system.learning.topic("Physics", "Friction")["mastery"], 33.3)
+                self.assertEqual(system.learning.next_difficulty("Physics", "Friction"), 1)
 
     def test_growth_goals_habits_and_insights(self):
         with tempfile.TemporaryDirectory() as tmp:
