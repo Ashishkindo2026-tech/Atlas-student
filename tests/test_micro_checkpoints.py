@@ -48,9 +48,10 @@ class MicroCheckpointTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             learning_state = Path(tmp) / "learning_state.json"
             intelligence_state = Path(tmp) / "intelligence.json"
+            growth_state = Path(tmp) / "growth_state.json"
             with patch("student.learning_system.FILE", learning_state), patch(
                 "brain.student_intelligence.FILE", intelligence_state
-            ):
+            ), patch("student.growth_system.FILE", growth_state):
                 system = AtlasStudentSystem()
                 raw = system.handle("student practice questions Physics|Friction|3")
                 payload = json.loads(raw)
@@ -66,6 +67,9 @@ class MicroCheckpointTests(unittest.TestCase):
                 system.handle("student learning attempt Physics|Friction|yes|2")
                 self.assertEqual(system.learning.topic("Physics", "Friction")["mastery"], 33.3)
                 self.assertEqual(system.learning.next_difficulty("Physics", "Friction"), 1)
+                insights = system.growth.insights()
+                self.assertEqual(insights["repeated_mistake_areas"][0][0], "physics")
+                self.assertEqual(insights["repeated_mistake_areas"][0][1], 2)
 
     def test_growth_goals_habits_and_insights(self):
         with tempfile.TemporaryDirectory() as tmp:
