@@ -72,12 +72,31 @@ class AtlasStudentSystem:
     def handle(self, command: str) -> Optional[str]:
         text = command.strip(); lower = text.lower()
 
+        if lower.startswith("student practice questions "):
+            parts = text[25:].split("|", 2)
+            if len(parts) >= 2:
+                count = int(parts[2]) if len(parts) == 3 and parts[2].strip().isdigit() else 5
+                questions = self.adaptive.generate_questions(parts[0], parts[1], count)
+                return json.dumps({
+                    "subject": parts[0].strip(),
+                    "topic": parts[1].strip(),
+                    "questions": questions,
+                    "difficulty": self.learning.next_difficulty(parts[0], parts[1]),
+                }, indent=2, ensure_ascii=False)
+            return "Use: student practice questions <subject>|<topic>|<count>"
         if lower.startswith("student practice "):
             parts = text[16:].split("|", 2)
             if len(parts) >= 2:
                 count = int(parts[2]) if len(parts) == 3 and parts[2].strip().isdigit() else 5
                 return json.dumps(self.learning.practice_plan(parts[0], parts[1], count), indent=2)
             return "Use: student practice <subject>|<topic>|<count>"
+        if lower.startswith("student learning attempt "):
+            parts = text[24:].split("|", 3)
+            if len(parts) >= 3:
+                correct = parts[2].strip().lower() in {"yes", "true", "correct", "1"}
+                difficulty = int(parts[3]) if len(parts) == 4 and parts[3].strip().isdigit() else 1
+                return json.dumps(self.learning.record_attempt(parts[0], parts[1], correct, difficulty), indent=2)
+            return "Use: student learning attempt <subject>|<topic>|<correct>|<difficulty>"
         if lower.startswith("student revise "):
             parts = text[15:].split("|", 1)
             if len(parts) == 2:
