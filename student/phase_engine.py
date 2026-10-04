@@ -6,11 +6,13 @@ from guidance.career import GuidanceEngine
 from student.lifecycle import AtlasLifecycle
 from student.advanced_intelligence import AdvancedStudentSystem
 from student.phase_21_30 import Atlas30, RealTimeContext
+from student.learning_system import LearningSystem
+from student.growth_system import GrowthSystem
 
 class PhaseEngine:
     def __init__(self):
         self.intelligence = StudentIntelligence(); self.adaptive = AdaptiveLearning(self.intelligence)
-        self.guidance = GuidanceEngine(); self.lifecycle = AtlasLifecycle(); self.advanced = AdvancedStudentSystem(); self.p30 = Atlas30()
+        self.guidance = GuidanceEngine(); self.lifecycle = AtlasLifecycle(); self.advanced = AdvancedStudentSystem(); self.p30 = Atlas30(); self.learning = LearningSystem(); self.growth = GrowthSystem()
     def status(self): return self.lifecycle.status()
     def dashboard(self): return {"lifecycle": self.lifecycle.status(), "intelligence": self.intelligence.data(), "adaptive_path": self.adaptive.next_path()}
     def attempt(self, subject, topic, correct, difficulty=1): return self.intelligence.record_attempt(subject, topic, correct, difficulty)
@@ -21,6 +23,10 @@ class PhaseEngine:
     def path(self, subject="", limit=5): return self.adaptive.next_path(subject, limit)
     def questions(self, subject, topic, count=5): return self.adaptive.generate_questions(subject, topic, count)
     def mastery(self, subject, topic): return self.adaptive.mastery(subject, topic)
+    def practice_plan(self, subject, topic, count=5): return self.learning.practice_plan(subject, topic, count)
+    def revision(self, subject, topic): return self.learning.schedule_revision(subject, topic)
+    def due_revisions(self, limit=10): return self.learning.due_revisions(limit=limit)
+    def growth_insights(self): return self.growth.insights()
     def guidance_for(self, strengths, interests=None): return self.guidance.recommend(strengths, interests)
     def advanced_analysis(self, attempts, topics=(), goals=()): return self.advanced.analyze(attempts, topics, goals)
     def study_session(self, minutes, focus, recommendations=()): return self.advanced.autonomous.session(minutes, focus, recommendations)

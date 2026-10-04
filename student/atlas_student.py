@@ -14,6 +14,10 @@ from privacy.privacy_shield import PrivacyShield
 from vision.vision_client import VisionClient
 from guidance.career import GuidanceEngine
 from student.lifecycle import AtlasLifecycle
+from student.learning_system import LearningSystem
+from student.growth_system import GrowthSystem
+from atlas_core.backup import export_bundle
+from pathlib import Path
 
 
 class AtlasStudentSystem:
@@ -28,6 +32,8 @@ class AtlasStudentSystem:
         self.adaptive = AdaptiveLearning(self.intelligence)
         self.guidance = GuidanceEngine()
         self.lifecycle = AtlasLifecycle()
+        self.learning = LearningSystem()
+        self.growth = GrowthSystem()
 
     def dashboard(self) -> Dict[str, Any]:
         return {
@@ -40,6 +46,9 @@ class AtlasStudentSystem:
             "adaptive_path": self.adaptive.next_path(),
             "privacy": self.privacy.status(),
             "lifecycle": self.lifecycle.status(),
+            "learning": self.learning.data(),
+            "growth": self.growth.data(),
+            "growth_insights": self.growth.insights(),
         }
 
     def plan(self, subject: str, minutes: int) -> str:
@@ -62,6 +71,64 @@ class AtlasStudentSystem:
 
     def handle(self, command: str) -> Optional[str]:
         text = command.strip(); lower = text.lower()
+
+        if lower.startswith("student practice questions "):
+            parts = text[27:].split("|", 2)
+            if len(parts) >= 2:
+                count = int(parts[2]) if len(parts) == 3 and parts[2].strip().isdigit() else 5
+                questions = self.adaptive.generate_questions(parts[0], parts[1], count)
+                return json.dumps({
+                    "subject": parts[0].strip(),
+                    "topic": parts[1].strip(),
+                    "questions": questions,
+                    "difficulty": self.learning.next_difficulty(parts[0], parts[1]),
+                }, indent=2, ensure_ascii=False)
+            return "Use: student practice questions <subject>|<topic>|<count>"
+        if lower.startswith("student practice "):
+            parts = text[16:].split("|", 2)
+            if len(parts) >= 2:
+                count = int(parts[2]) if len(parts) == 3 and parts[2].strip().isdigit() else 5
+                return json.dumps(self.learning.practice_plan(parts[0], parts[1], count), indent=2)
+            return "Use: student practice <subject>|<topic>|<count>"
+        if lower.startswith("student learning attempt "):
+            parts = text[24:].split("|", 3)
+            if len(parts) >= 3:
+                correct = parts[2].strip().lower() in {"yes", "true", "correct", "1"}
+                difficulty = int(parts[3]) if len(parts) == 4 and parts[3].strip().isdigit() else 1
+                result = self.learning.record_attempt(parts[0], parts[1], correct, difficulty)
+                if not correct:
+                    self.growth.record_history("mistake", parts[0].strip(), parts[1].strip(), "Incorrect practice attempt")
+                return json.dumps(result, indent=2)
+            return "Use: student learning attempt <subject>|<topic>|<correct>|<difficulty>"
+        if lower.startswith("student revise "):
+            parts = text[15:].split("|", 1)
+            if len(parts) == 2:
+                return json.dumps(self.learning.schedule_revision(parts[0], parts[1]), indent=2)
+            return "Use: student revise <subject>|<topic>"
+        if lower in {"student due revisions", "due revisions"}:
+            return json.dumps(self.learning.due_revisions(), indent=2)
+        if lower.startswith("student goal create "):
+            return json.dumps(self.growth.create_goal(text[20:].strip()))
+        if lower.startswith("student goal progress "):
+            parts = text[22:].split("|", 1)
+            if len(parts) == 2:
+                return json.dumps({"ok": self.growth.update_goal(int(parts[0]), progress=int(parts[1]))})
+            return "Use: student goal progress <id>|<0-100>"
+        if lower.startswith("student habit "):
+            return json.dumps(self.growth.add_habit(text[14:].strip()))
+        if lower.startswith("student habit check "):
+            return json.dumps({"ok": self.growth.check_habit(int(text[20:].strip()))})
+        if lower.startswith("student skill "):
+            parts = text[14:].split("|", 2)
+            if len(parts) >= 2:
+                evidence = parts[2] if len(parts) == 3 else ""
+                return json.dumps({"ok": self.growth.set_skill(parts[0], int(parts[1]), evidence)})
+            return "Use: student skill <name>|<0-100>|<evidence>"
+        if lower in {"student growth", "growth insights"}:
+            return json.dumps(self.growth.insights(), indent=2)
+        if lower == "student backup":
+            target = Path.home() / "AtlasStudent" / "atlas-backup.json"
+            return json.dumps({"path": str(export_bundle(target))})
         if lower in {"student dashboard", "atlas student dashboard", "student status"}:
             return json.dumps(self.dashboard(), indent=2, ensure_ascii=False)
         if lower.startswith("student reason "): return self.reason(text[15:].strip())

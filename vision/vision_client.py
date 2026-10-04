@@ -6,10 +6,15 @@ The text-only student model remains untouched when no image is supplied.
 from __future__ import annotations
 
 import base64
+import mimetypes
 from pathlib import Path
 from typing import Optional
 
 import requests
+
+
+ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
+MAX_IMAGE_BYTES = 12 * 1024 * 1024
 
 
 class VisionClient:
@@ -18,12 +23,29 @@ class VisionClient:
         self.endpoint = endpoint
 
     @staticmethod
-    def encode_image(path: str) -> str:
+    def validate_image(path: str) -> Path:
         file = Path(path).expanduser().resolve()
         if not file.is_file():
             raise FileNotFoundError(str(file))
-        if file.stat().st_size > 12 * 1024 * 1024:
+        if file.stat().st_size <= 0:
+            raise ValueError("Image file is empty or unreadable.")
+        if file.stat().st_size > MAX_IMAGE_BYTES:
             raise ValueError("Image is larger than the 12 MB local safety limit.")
+        try:
+            from PIL import Image
+            with Image.open(file) as image:
+                image.verify()
+        except ImportError:
+            # Pillow is optional; extension/mime/size validation still protects the
+            # local boundary when Pillow is not installed.
+            pass
+        except Exception as exc:
+            raise ValueError(f"Image could not be read: {exc}") from exc
+        return file
+
+    @classmethod
+    def encode_image(cls, path: str) -> str:
+        file = cls.validate_image(path)
         return base64.b64encode(file.read_bytes()).decode("ascii")
 
     def describe(self, path: str, prompt: str = "Explain what is relevant in this image for a student.") -> str:

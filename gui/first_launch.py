@@ -14,6 +14,8 @@ from tkinter import colorchooser, filedialog
 
 import customtkinter as ctk
 
+from .theme_store import load_ui as load_canonical_ui, save_ui as save_canonical_ui
+
 APPDATA = Path(os.environ.get("APPDATA", Path.home())) / "AtlasStudent"
 UI_FILE = APPDATA / "ui.json"
 SETUP_FILE = APPDATA / "first_launch_complete"
@@ -59,20 +61,18 @@ PRESETS = {
 
 
 def load_existing() -> dict:
+    # Read the canonical Learning OS schema, then translate it into wizard keys.
+    canonical = load_canonical_ui()
     data = deepcopy(DEFAULTS)
-    try:
-        if UI_FILE.exists():
-            raw = json.loads(UI_FILE.read_text(encoding="utf-8"))
-            data.update({k: v for k, v in raw.items() if k in data})
-    except Exception:
-        pass
+    reverse = {"surface": "panel", "surface_2": "panel_alt", "surface_hover": "panel_hover",
+               "accent_2": "accent_hover"}
+    for key, value in canonical.items():
+        data[reverse.get(key, key)] = value
     return data
 
 
 def save_ui(data: dict) -> None:
-    APPDATA.mkdir(parents=True, exist_ok=True)
-    UI_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
-    SETUP_FILE.write_text("Atlas personalization completed.\n", encoding="utf-8")
+    save_canonical_ui(data)
 
 
 def needs_setup() -> bool:
@@ -230,12 +230,19 @@ class AtlasFirstLaunch(ctk.CTk):
 
     def _next(self):
         if self.step < 3:
-            self.step += 1; self._render_page(); return
+            self.step += 1
+            self._render_page()
+            if hasattr(self, "_update_nav"):
+                self._update_nav()
+            return
         self.finish()
 
     def _back(self):
         if self.step > 0:
-            self.step -= 1; self._render_page()
+            self.step -= 1
+            self._render_page()
+            if hasattr(self, "_update_nav"):
+                self._update_nav()
 
     def finish(self):
         save_ui(self.ui)
