@@ -457,8 +457,8 @@ class AtlasGUI(ctk.CTk):
         for icon, title, value, caption, rx, ry in cards:
             self._floating_card(visual, icon, title, value, caption).place(relx=rx, rely=ry, anchor="nw")
 
-        prompt = ctk.CTkFrame(visual, fg_color="#07102A", corner_radius=25, border_width=1, border_color="#4055A5")
-        prompt.place(relx=.49, rely=.90, relwidth=.53, height=56, anchor="center")
+        prompt = ctk.CTkFrame(visual, width=620, height=56, fg_color="#07102A", corner_radius=25, border_width=1, border_color="#4055A5")
+        prompt.place(relx=.49, rely=.90, relwidth=.53, anchor="center")
         ctk.CTkLabel(prompt, text="✦", text_color="#8EA7FF", font=("Segoe UI Symbol", 16, "bold")).pack(side="left", padx=(15, 7))
         self.dashboard_input = ctk.CTkEntry(prompt, placeholder_text=f"What would you like to explore today, {name}?", fg_color="transparent", border_width=0, height=42, text_color="#F4F7FF", placeholder_text_color="#7180A8", font=self._font(9))
         self.dashboard_input.pack(side="left", fill="x", expand=True)
