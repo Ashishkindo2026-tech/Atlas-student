@@ -24,6 +24,10 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from brain.agent import process
+try:
+    from student.atlas_student import system as student_system
+except Exception:
+    student_system = None
 
 try:
     from voice_engine import listen, speak
@@ -74,8 +78,22 @@ DEFAULT_UI = {
     "show_sidebar": True,
     "show_status": True,
     "show_date": True,
+    "theme": "dark",
 }
 
+LIGHT_OVERRIDES = {
+    "background": "#F4F7FF",
+    "background_2": "#E6ECFF",
+    "sidebar": "#F8FAFF",
+    "surface": "#FFFFFF",
+    "surface_2": "#EEF2FF",
+    "surface_hover": "#E3E9FF",
+    "text": "#18203A",
+    "muted": "#68718A",
+    "accent": "#5B63FF",
+    "accent_2": "#8B5CF6",
+    "border": "#D7DDF2",
+}
 APPDATA = Path(os.environ.get("APPDATA", Path.home())) / "AtlasStudent"
 UI_FILE = APPDATA / "ui.json"
 FIRST_USE_FILE = APPDATA / "first_use.json"
@@ -137,7 +155,8 @@ class AtlasGUI(ctk.CTk):
         self.after(120, self._animate_background)
 
     def _apply_window(self):
-        ctk.set_appearance_mode("dark")
+        theme = self.ui.get("theme", "dark")
+        ctk.set_appearance_mode("dark" if theme == "dark" else "light")
         self.configure(fg_color=self.ui["background"])
         try:
             self.attributes("-alpha", float(self.ui["opacity"]))
@@ -147,9 +166,26 @@ class AtlasGUI(ctk.CTk):
     def _c(self, key):
         return self.ui[key]
 
-    def _font(self, size=None, weight="normal"):
-        size = size or self.ui["font_size"]
-        return (self.ui["font"], max(7, int(size * self.ui["ui_scale"])), weight)
+    def _profile(self):
+        try:
+            return student_system.intelligence.profile() if student_system else {}
+        except Exception:
+            return {}
+
+    def _snapshot(self):
+        try:
+            return student_system.dashboard() if student_system else {}
+        except Exception:
+            return {}
+
+    def _display_name(self):
+        profile = self._profile()
+        return str(profile.get("name") or profile.get("student_name") or "Student")
+
+    def _display_class(self):
+        profile = self._profile()
+        value = profile.get("class") or profile.get("grade") or profile.get("standard")
+        return str(value) if value else "Student profile"
 
     def _build_shell(self):
         for name in ("rail", "stage", "bg_canvas"):
@@ -164,62 +200,111 @@ class AtlasGUI(ctk.CTk):
         self.stage = ctk.CTkFrame(self, fg_color="transparent")
         self.stage.place(relx=0, rely=0, relwidth=1, relheight=1)
 
-        self.rail = ctk.CTkFrame(self.stage, width=int(self.ui["sidebar_width"]), fg_color=self._c("sidebar"), corner_radius=0)
+        self.topbar = ctk.CTkFrame(
+            self.stage, fg_color=self._c("surface"), corner_radius=0,
+            border_width=1, border_color=self._c("border"), height=68
+        )
+        self.topbar.pack(side="top", fill="x")
+        self.topbar.pack_propagate(False)
+
+        brand = ctk.CTkFrame(self.topbar, fg_color="transparent")
+        brand.pack(side="left", padx=24)
+        ctk.CTkLabel(brand, text="✦", text_color=self._c("accent"),
+                     font=("Segoe UI Symbol", 25, "bold")).pack(side="left")
+        ctk.CTkLabel(brand, text="ATLAS", text_color=self._c("text"),
+                     font=self._font(16, "bold")).pack(side="left", padx=(10, 0))
+
+        search = ctk.CTkEntry(
+            self.topbar, placeholder_text="Search Atlas", width=280, height=38,
+            corner_radius=19, fg_color=self._c("surface_2"), border_width=0,
+            text_color=self._c("text"), placeholder_text_color=self._c("muted"),
+            font=self._font(9)
+        )
+        search.pack(side="left", padx=24)
+
+        profile = ctk.CTkFrame(self.topbar, fg_color="transparent")
+        profile.pack(side="right", padx=18)
+        ctk.CTkButton(
+            profile, text="☼" if self.ui.get("theme") == "dark" else "☾",
+            width=38, height=38, corner_radius=19,
+            fg_color=self._c("surface_2"), hover_color=self._c("surface_hover"),
+            text_color=self._c("text"), font=self._font(12, "bold"),
+            command=self.toggle_theme
+        ).pack(side="left", padx=5)
+        avatar = ctk.CTkFrame(profile, width=38, height=38, fg_color=self._c("accent"), corner_radius=19)
+        avatar.pack(side="left", padx=7)
+        avatar.pack_propagate(False)
+        ctk.CTkLabel(avatar, text=self._display_name()[:1].upper(),
+                     text_color="#FFFFFF", font=self._font(12, "bold")).place(relx=.5, rely=.5, anchor="center")
+        info = ctk.CTkFrame(profile, fg_color="transparent")
+        info.pack(side="left", padx=(3, 8))
+        ctk.CTkLabel(info, text=self._display_name(), text_color=self._c("text"),
+                     font=self._font(10, "bold")).pack(anchor="w")
+        ctk.CTkLabel(info, text=self._display_class(), text_color=self._c("muted"),
+                     font=self._font(7)).pack(anchor="w")
+        ctk.CTkButton(profile, text="⚙", width=34, height=34, corner_radius=17,
+                      fg_color="transparent", hover_color=self._c("surface_hover"),
+                      text_color=self._c("muted"), font=self._font(12),
+                      command=self.show_studio).pack(side="left")
+
+        body = ctk.CTkFrame(self.stage, fg_color="transparent")
+        body.pack(fill="both", expand=True)
+
+        self.rail = ctk.CTkFrame(body, width=218, fg_color=self._c("sidebar"),
+                                 corner_radius=0, border_width=1, border_color=self._c("border"))
         if self.ui["show_sidebar"]:
             self.rail.pack(side="left", fill="y")
         self.rail.pack_propagate(False)
 
-        brand = ctk.CTkFrame(self.rail, fg_color="transparent")
-        brand.pack(fill="x", padx=22, pady=(25, 18))
-        orb = ctk.CTkLabel(brand, text="✦", text_color=self._c("accent"), font=("Segoe UI Symbol", 30, "bold"))
-        orb.pack(side="left")
-        words = ctk.CTkFrame(brand, fg_color="transparent")
-        words.pack(side="left", padx=11)
-        ctk.CTkLabel(words, text="ATLAS", text_color=self._c("text"), font=self._font(18, "bold")).pack(anchor="w")
-        ctk.CTkLabel(words, text="STUDENT OS", text_color=self._c("muted"), font=self._font(8, "bold")).pack(anchor="w")
-
-        if self.ui["show_status"]:
-            status = ctk.CTkFrame(self.rail, fg_color=self._c("surface"), corner_radius=16)
-            status.pack(fill="x", padx=15, pady=(0, 18))
-            ctk.CTkLabel(status, text="●", text_color=self._c("success"), font=self._font(11)).pack(side="left", padx=(12, 7), pady=11)
-            ctk.CTkLabel(status, text="CORE ONLINE", text_color=self._c("text"), font=self._font(9, "bold")).pack(side="left")
-            ctk.CTkLabel(status, text="LOCAL", text_color=self._c("muted"), font=self._font(7, "bold")).pack(side="right", padx=12)
+        nav_brand = ctk.CTkFrame(self.rail, fg_color="transparent")
+        nav_brand.pack(fill="x", padx=18, pady=(22, 14))
+        ctk.CTkLabel(nav_brand, text="ATLAS", text_color=self._c("text"),
+                     font=self._font(18, "bold")).pack(anchor="w")
+        ctk.CTkLabel(nav_brand, text="YOUR PERSONAL LEARNING SPACE",
+                     text_color=self._c("muted"), font=self._font(7, "bold")).pack(anchor="w", pady=(2, 0))
 
         self.nav_buttons = {}
-        groups = [
-            ("YOUR ATLAS", [("⌂", "Home", self.show_home), ("◈", "Chat", self.show_chat), ("◉", "Voice", self.show_voice)]),
-            ("LEARNING", [("Φ", "Physics", lambda: self.show_subject("Physics")), ("∑", "Maths", lambda: self.show_subject("Mathematics")), ("⚗", "Chemistry", lambda: self.show_subject("Chemistry")), ("▣", "Notes", self.show_notes), ("◇", "Practice", self.show_practice), ("◫", "Planner", self.show_planner)]),
-            ("INSIGHTS", [("◌", "Memory", self.show_memory), ("▥", "Progress", self.show_progress)]),
+        nav = [
+            ("◈", "Focus", self.show_home, "Your current sphere"),
+            ("✧", "Learning", self.show_learning, "Build your tomorrow"),
+            ("◌", "Memory", self.show_memory, "Nothing is ever lost"),
+            ("◇", "Goals", self.show_goals, "Turn plans into reality"),
+            ("▣", "Knowledge", self.show_notes, "Your personal library"),
+            ("◉", "Self", self.show_self, "Understand yourself"),
         ]
-        for heading, items in groups:
-            ctk.CTkLabel(self.rail, text=heading, text_color="#5F6880", font=self._font(8, "bold")).pack(anchor="w", padx=21, pady=(5, 6))
-            for icon, label, command in items:
-                self._nav_button(icon, label, command)
+        for icon, label, command, subtitle in nav:
+            self._nav_button(icon, label, command, subtitle=subtitle)
 
-        if self.days_used >= 7:
-            self._nav_button("✦", "Studio", self.show_studio, bottom=True)
-        else:
-            locked = self._nav_button("✦", "Studio", self.show_studio, bottom=True)
-            locked.configure(text="  ✦    Studio  ·  Day 7", state="disabled", text_color="#596176")
+        status = ctk.CTkFrame(self.rail, fg_color=self._c("surface"), corner_radius=16,
+                              border_width=1, border_color=self._c("border"))
+        status.pack(side="bottom", fill="x", padx=12, pady=14)
+        ctk.CTkLabel(status, text="●", text_color=self._c("success"),
+                     font=self._font(9)).pack(side="left", padx=(11, 6), pady=10)
+        ctk.CTkLabel(status, text="Atlas is with you", text_color=self._c("text"),
+                     font=self._font(8, "bold")).pack(anchor="w", pady=10)
+        ctk.CTkLabel(status, text="Always. Always learning.", text_color=self._c("muted"),
+                     font=self._font(6)).pack(anchor="w", padx=(27, 8), pady=(0, 10))
 
-        self.main = ctk.CTkFrame(self.stage, fg_color="transparent", corner_radius=0)
+        self.main = ctk.CTkFrame(body, fg_color="transparent", corner_radius=0)
         self.main.pack(side="left", fill="both", expand=True)
 
     def _draw_background(self):
         self.bg_canvas.delete("all")
-        w = max(self.winfo_width(), 1200)
-        h = max(self.winfo_height(), 700)
+        self._particles = []
+        w = max(self.winfo_width(), 1280)
+        h = max(self.winfo_height(), 760)
         self.bg_canvas.create_rectangle(0, 0, w, h, fill=self._c("background"), outline="")
-        style = self.ui.get("background_style", "Aurora")
-        if style == "Midnight":
-            return
-        self.bg_canvas.create_oval(w - 520, -220, w + 180, 480, fill=self._c("background_2"), outline="")
-        self.bg_canvas.create_oval(-240, h - 360, 430, h + 280, fill=self._c("accent_dark" if "accent_dark" in self.ui else "background_2"), outline="")
-        for i in range(24):
-            x = (i * 197 + 71) % w
-            y = (i * 113 + 47) % h
-            r = 1 + (i % 3)
-            self._particles.append(self.bg_canvas.create_oval(x-r, y-r, x+r, y+r, fill=self._c("border"), outline=""))
+        glow = self._c("background_2")
+        self.bg_canvas.create_oval(w * .42, h * .05, w * .93, h * .72, fill=glow, outline="")
+        self.bg_canvas.create_oval(-w * .20, h * .42, w * .45, h * 1.15, fill=glow, outline="")
+        for i in range(34):
+            x = (i * 173 + 97) % w
+            y = (i * 97 + 31) % h
+            r = 1 + (i % 2)
+            self._particles.append(self.bg_canvas.create_oval(
+                x-r, y-r, x+r, y+r,
+                fill=self._c("accent") if i % 5 == 0 else self._c("border"), outline=""
+            ))
 
     def _animate_background(self):
         try:
@@ -233,11 +318,18 @@ class AtlasGUI(ctk.CTk):
         except tk.TclError:
             return
 
-    def _nav_button(self, icon, label, command, bottom=False):
-        b = ctk.CTkButton(self.rail, text=f"  {icon}    {label}", command=command, anchor="w", height=41,
-                          fg_color="transparent", hover_color=self._c("surface_hover"), text_color=self._c("muted"),
-                          corner_radius=13, font=self._font(10, "bold"))
-        b.pack(side="bottom" if bottom else "top", fill="x", padx=11, pady=2)
+    def _nav_button(self, icon, label, command, subtitle="", bottom=False):
+        holder = ctk.CTkFrame(self.rail, fg_color="transparent", corner_radius=14)
+        holder.pack(side="bottom" if bottom else "top", fill="x", padx=10, pady=3)
+        b = ctk.CTkButton(
+            holder, text=f"{icon}   {label}", command=command, anchor="w",
+            height=38, fg_color="transparent", hover_color=self._c("surface_hover"),
+            text_color=self._c("muted"), corner_radius=13, font=self._font(10, "bold")
+        )
+        b.pack(fill="x")
+        if subtitle:
+            ctk.CTkLabel(holder, text=subtitle, text_color=self._c("muted"),
+                         font=self._font(6)).pack(anchor="w", padx=38, pady=(0, 3))
         self.nav_buttons[label] = b
         return b
 
@@ -294,30 +386,282 @@ class AtlasGUI(ctk.CTk):
         return hero
 
     def show_home(self):
-        self.set_active("Home"); self.clear(); self.header("Atlas Student", "Good to see you.", "Your next step is already here.")
-        body = ctk.CTkFrame(self.main, fg_color="transparent"); body.pack(fill="both", expand=True, padx=45, pady=(0, 28))
-        self._hero(body)
-        grid = ctk.CTkFrame(body, fg_color="transparent"); grid.pack(fill="both", expand=True); grid.grid_columnconfigure((0,1,2), weight=1)
-        for i, (icon, title, desc, cmd) in enumerate([
-            ("◈", "Chat", "Ask Atlas and learn through conversation.", self.show_chat),
-            ("◉", "Voice", "Talk naturally with your Atlas teacher.", self.show_voice),
-            ("◇", "Practice", "Turn weak spots into confidence.", self.show_practice),
-        ]):
-            c = self.card(grid); c.grid(row=0, column=i, sticky="nsew", padx=6)
-            ctk.CTkLabel(c, text=icon, text_color=self._c("accent"), font=("Segoe UI Symbol", 28, "bold")).pack(anchor="w", padx=22, pady=(23, 7))
-            ctk.CTkLabel(c, text=title, text_color=self._c("text"), font=self._font(17, "bold")).pack(anchor="w", padx=22)
-            ctk.CTkLabel(c, text=desc, text_color=self._c("muted"), wraplength=260, justify="left", font=self._font(9)).pack(anchor="w", padx=22, pady=(5, 18))
-            self.button(c, "Open", cmd, 100, title == "Chat").pack(anchor="w", padx=22, pady=(0, 22))
+        self.current_page = "home"
+        self.set_active("Focus")
+        self.clear()
+        snap = self._snapshot()
+        intel = snap.get("intelligence", {}) if isinstance(snap, dict) else {}
+        adaptive = snap.get("adaptive_path", []) if isinstance(snap, dict) else []
+        progress = snap.get("progress", {}) if isinstance(snap, dict) else {}
+        profile = self._profile()
+        weak = adaptive[0] if adaptive else None
+        focus_text = f"{weak.get('subject', 'Study')} · {weak.get('topic', 'Next review')}" if isinstance(weak, dict) else "Choose your next focus"
+        recent_sessions = progress.get("sessions", []) if isinstance(progress, dict) else []
+        recent = recent_sessions[-1] if recent_sessions else None
+        recent_text = f"{recent.get('subject', 'Study')} · {recent.get('topic') or 'Study session'}" if isinstance(recent, dict) else "No recent learning yet"
+        memory_count = int(snap.get("memory_items", 0) or 0) if isinstance(snap, dict) else 0
+        goals = intel.get("goals", []) if isinstance(intel, dict) else []
+        knowledge_text = "Your personal library" if snap.get("phases") else "No knowledge indexed yet"
+        conversation_text = f"{snap.get('recent_messages', 0)} recent messages" if snap else "No conversation yet"
 
-        bottom = self.card(body, self._c("surface"), 22)
-        bottom.pack(fill="x", pady=(14, 0))
-        row = ctk.CTkFrame(bottom, fg_color="transparent"); row.pack(fill="x", padx=23, pady=18)
-        ctk.CTkLabel(row, text="TODAY", text_color=self._c("accent"), font=self._font(8, "bold")).pack(side="left")
-        ctk.CTkLabel(row, text="  78% learning momentum", text_color=self._c("text"), font=self._font(12, "bold")).pack(side="left")
-        bar = ctk.CTkProgressBar(row, height=8, progress_color=self._c("accent"), fg_color=self._c("border")); bar.pack(side="left", fill="x", expand=True, padx=25); bar.set(.78)
-        ctk.CTkLabel(row, text="3 subjects active", text_color=self._c("muted"), font=self._font(9)).pack(side="right")
+        top = ctk.CTkFrame(self.main, fg_color="transparent")
+        top.pack(fill="x", padx=30, pady=(22, 6))
+        greeting = ctk.CTkFrame(top, fg_color="transparent")
+        greeting.pack(side="left")
+        ctk.CTkLabel(greeting, text="FOCUS", text_color=self._c("accent"),
+                     font=self._font(8, "bold")).pack(anchor="w")
+        ctk.CTkLabel(greeting, text="Your current sphere", text_color=self._c("text"),
+                     font=self._font(25, "bold")).pack(anchor="w", pady=(1, 0))
+        ctk.CTkLabel(greeting,
+                     text=f"Welcome back, {profile.get('name') or 'student'}. Your learning space is ready.",
+                     text_color=self._c("muted"), font=self._font(9)).pack(anchor="w", pady=(3, 0))
+
+        split = ctk.CTkFrame(self.main, fg_color="transparent")
+        split.pack(fill="both", expand=True, padx=24, pady=(4, 20))
+        split.grid_columnconfigure(0, weight=1)
+        split.grid_columnconfigure(1, weight=0, minsize=270)
+        split.grid_rowconfigure(0, weight=1)
+
+        visual = ctk.CTkFrame(split, fg_color="transparent")
+        visual.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        visual.grid_columnconfigure(0, weight=1)
+        visual.grid_rowconfigure(0, weight=1)
+
+        core_canvas = tk.Canvas(visual, highlightthickness=0, bd=0, bg=self._c("background"), relief="flat")
+        core_canvas.grid(row=0, column=0, sticky="nsew")
+        self.core_canvas = core_canvas
+        self._draw_atlas_core()
+
+        cards = [
+            ("TODAY'S FOCUS", focus_text, "Adaptive next step", .05, .07),
+            ("RECENT LEARNING", recent_text, "Latest recorded session", .74, .07),
+            ("RECENT MEMORY", f"{memory_count} approved memories", "Long-term memory", .05, .43),
+            ("KNOWLEDGE", knowledge_text, "Documents & notes", .74, .43),
+            ("ACTIVE GOALS", f"{len([g for g in goals if not g.get('done')])} active goals", "Your current goals", .16, .72),
+            ("CONVERSATION", conversation_text, "Connected to Atlas", .62, .72),
+        ]
+        for title, value, caption, rx, ry in cards:
+            card = self._floating_card(visual, title, value, caption)
+            card.place(relx=rx, rely=ry, anchor="nw")
+
+        actions = self.card(split, self._c("surface"), 24)
+        actions.grid(row=0, column=1, sticky="nsew", padx=(10, 0))
+        ctk.CTkLabel(actions, text="Quick Actions", text_color=self._c("text"),
+                     font=self._font(17, "bold")).pack(anchor="w", padx=20, pady=(20, 4))
+        ctk.CTkLabel(actions, text="Move directly into Atlas.", text_color=self._c("muted"),
+                     font=self._font(8)).pack(anchor="w", padx=20, pady=(0, 14))
+        for icon, title, caption, cmd in [
+            ("⌕", "Ask a Question", "Get instant help", self.show_chat),
+            ("◈", "Start Study Session", "Focus mode", self.show_learning),
+            ("▣", "Open Library", "Resources & notes", self.show_notes),
+            ("▥", "Check Progress", "View your growth", self.show_progress),
+            ("⚙", "Customize Atlas", "Make it yours", self.show_studio),
+        ]:
+            self._quick_action(actions, icon, title, caption, cmd)
+
+        quote = ctk.CTkFrame(actions, fg_color=self._c("surface_2"), corner_radius=18)
+        quote.pack(fill="x", padx=14, pady=(12, 14), side="bottom")
+        ctk.CTkLabel(quote, text="“", text_color=self._c("accent_2"), font=self._font(22, "bold")).pack(anchor="w", padx=13, pady=(7, 0))
+        ctk.CTkLabel(quote, text="Small steps, consistent effort,\ncreate extraordinary results.",
+                     text_color=self._c("text"), font=self._font(8), justify="left").pack(anchor="w", padx=14, pady=(0, 4))
+        ctk.CTkLabel(quote, text="— Atlas", text_color=self._c("muted"), font=self._font(7)).pack(anchor="w", padx=14, pady=(0, 10))
+
+        prompt = ctk.CTkFrame(visual, fg_color=self._c("surface"), corner_radius=24,
+                              border_width=1, border_color=self._c("border"))
+        prompt.place(relx=.50, rely=.91, relwidth=.72, anchor="center")
+        ctk.CTkLabel(prompt, text="✦", text_color=self._c("accent"),
+                     font=("Segoe UI Symbol", 15, "bold")).pack(side="left", padx=(15, 7), pady=10)
+        self.dashboard_input = ctk.CTkEntry(
+            prompt, placeholder_text=f"What would you like to explore today, {profile.get('name') or 'student'}?",
+            fg_color="transparent", border_width=0, height=42, text_color=self._c("text"),
+            placeholder_text_color=self._c("muted"), font=self._font(9)
+        )
+        self.dashboard_input.pack(side="left", fill="x", expand=True)
+        self.dashboard_input.bind("<Return>", lambda _e: self._dashboard_ask())
+        ctk.CTkButton(prompt, text="→", width=42, height=42, corner_radius=21,
+                      fg_color=self._c("accent"), hover_color=self._c("accent_2"),
+                      text_color="#FFFFFF", font=self._font(14, "bold"),
+                      command=self._dashboard_ask).pack(side="right", padx=5, pady=5)
+        self._animate_core()
+
+    def _floating_card(self, parent, title, value, caption):
+        frame = ctk.CTkFrame(parent, fg_color=self._c("surface"), corner_radius=17,
+                             border_width=1, border_color=self._c("border"))
+        ctk.CTkLabel(frame, text=title, text_color=self._c("accent"),
+                     font=self._font(7, "bold")).pack(anchor="w", padx=14, pady=(11, 2))
+        ctk.CTkLabel(frame, text=value, text_color=self._c("text"),
+                     font=self._font(9, "bold"), wraplength=185, justify="left").pack(anchor="w", padx=14)
+        ctk.CTkLabel(frame, text=caption, text_color=self._c("muted"),
+                     font=self._font(6)).pack(anchor="w", padx=14, pady=(2, 10))
+        return frame
+
+    def _quick_action(self, parent, icon, title, caption, command):
+        row = ctk.CTkButton(
+            parent, text=f"{icon}   {title}\n        {caption}", command=command,
+            anchor="w", height=58, fg_color="transparent",
+            hover_color=self._c("surface_hover"), text_color=self._c("text"),
+            corner_radius=14, font=self._font(9, "bold")
+        )
+        row.pack(fill="x", padx=10, pady=2)
+
+    def _draw_atlas_core(self):
+        canvas = self.core_canvas
+        canvas.delete("all")
+        w = max(canvas.winfo_width(), 700)
+        h = max(canvas.winfo_height(), 620)
+        cx, cy = w * .51, h * .46
+        max_r = min(w, h) * .29
+        for ratio, color in [(1.00, self._c("background_2")), (.78, self._c("surface_2")), (.56, self._c("accent_2"))]:
+            r = max_r * ratio
+            canvas.create_oval(cx-r, cy-r, cx+r, cy+r, fill=color, outline="")
+        for ratio, width, color in [(1.00, 2, self._c("accent")), (.78, 1, self._c("accent_2")), (.58, 2, self._c("accent")), (.40, 1, self._c("border"))]:
+            r = max_r * ratio
+            canvas.create_oval(cx-r, cy-r, cx+r, cy+r, outline=color, width=width)
+        canvas.create_arc(cx-max_r*1.08, cy-max_r*.56, cx+max_r*1.08, cy+max_r*.56,
+                          start=15, extent=150, style="arc", outline=self._c("accent_2"), width=2)
+        canvas.create_arc(cx-max_r*.92, cy-max_r*.82, cx+max_r*.92, cy+max_r*.82,
+                          start=195, extent=155, style="arc", outline=self._c("accent"), width=2)
+        core_r = max_r * .30
+        canvas.create_oval(cx-core_r, cy-core_r, cx+core_r, cy+core_r,
+                           fill=self._c("accent"), outline=self._c("accent_2"), width=3)
+        canvas.create_oval(cx-core_r*.72, cy-core_r*.72, cx+core_r*.72, cy+core_r*.72,
+                           fill=self._c("surface_2"), outline="")
+        canvas.create_text(cx, cy+2, text="A", fill="#FFFFFF",
+                           font=("Segoe UI", max(28, int(core_r*.42)), "bold"))
+        canvas.create_text(cx, cy+core_r+.28*max_r, text="ATLAS CORE",
+                           fill=self._c("muted"), font=self._font(7, "bold"))
+        self._core_center = (cx, cy, max_r)
+        self._core_angle = getattr(self, "_core_angle", 0.0)
+        self._core_orbits = []
+        for idx, radius in enumerate((max_r*.52, max_r*.72, max_r*.92)):
+            item = canvas.create_oval(0, 0, 0, 0, fill=self._c("accent"), outline=self._c("accent_2") if idx == 1 else "")
+            self._core_orbits.append((item, radius, idx))
+
+    def _animate_core(self):
+        try:
+            if not hasattr(self, "core_canvas") or not self.core_canvas.winfo_exists():
+                return
+            import math
+            canvas = self.core_canvas
+            cx, cy, _ = self._core_center
+            self._core_angle += .018
+            for item, radius, idx in self._core_orbits:
+                angle = self._core_angle * (1.0 + idx * .37) + idx * 2.1
+                x = cx + radius * math.cos(angle)
+                y = cy + radius * .55 * math.sin(angle)
+                r = 4 if idx != 1 else 5
+                canvas.coords(item, x-r, y-r, x+r, y+r)
+            self.after(40, self._animate_core)
+        except tk.TclError:
+            return
+
+    def _dashboard_ask(self):
+        entry = getattr(self, "dashboard_input", None)
+        if entry is None:
+            return
+        query = entry.get().strip()
+        if not query:
+            return
+        self.show_chat()
+        self.chat_input.insert(0, query)
+        self.send_chat()
+
+    def toggle_theme(self):
+        if self.ui.get("theme", "dark") == "dark":
+            self.ui["theme"] = "light"
+            for key, value in LIGHT_OVERRIDES.items():
+                self.ui[key] = value
+        else:
+            self.ui["theme"] = "dark"
+            for key in LIGHT_OVERRIDES:
+                self.ui[key] = DEFAULT_UI[key]
+        save_ui(self.ui)
+        self._apply_window()
+        self._build_shell()
+        page = getattr(self, "current_page", "home")
+        if page == "chat": self.show_chat()
+        elif page == "voice": self.show_voice()
+        elif page == "learning": self.show_learning()
+        elif page == "memory": self.show_memory()
+        elif page == "goals": self.show_goals()
+        elif page == "knowledge": self.show_notes()
+        elif page == "self": self.show_self()
+        else: self.show_home()
+
+    def show_learning(self):
+        self.current_page = "learning"
+        self.set_active("Learning")
+        self.clear()
+        snap = self._snapshot()
+        intel = snap.get("intelligence", {}) if isinstance(snap, dict) else {}
+        weak = intel.get("weak_topics", []) if isinstance(intel, dict) else []
+        self.header("Learning", "Build your tomorrow", "Adaptive learning evidence, revision and next steps.")
+        panel = self.card(self.main)
+        panel.pack(fill="both", expand=True, padx=30, pady=(0, 28))
+        if not weak:
+            ctk.CTkLabel(panel, text="No weak-topic evidence yet.", text_color=self._c("text"),
+                         font=self._font(18, "bold")).pack(anchor="w", padx=25, pady=(28, 5))
+            ctk.CTkLabel(panel, text="Ask Atlas a question or start a practice session to build evidence.",
+                         text_color=self._c("muted"), font=self._font(9)).pack(anchor="w", padx=25)
+        else:
+            ctk.CTkLabel(panel, text="NEXT AREAS TO WORK ON", text_color=self._c("accent"),
+                         font=self._font(8, "bold")).pack(anchor="w", padx=25, pady=(25, 12))
+            for item in weak[:6]:
+                row = ctk.CTkFrame(panel, fg_color=self._c("surface_2"), corner_radius=15)
+                row.pack(fill="x", padx=22, pady=5)
+                ctk.CTkLabel(row, text=f"{item.get('subject')} · {item.get('topic')}",
+                             text_color=self._c("text"), font=self._font(10, "bold")).pack(side="left", padx=14, pady=13)
+                ctk.CTkLabel(row, text=f"evidence {item.get('evidence', 0)}",
+                             text_color=self._c("muted"), font=self._font(8)).pack(side="right", padx=14)
+        self.button(panel, "Ask Atlas what to do next", self.show_chat, 210, True).pack(anchor="w", padx=22, pady=20)
+
+    def show_goals(self):
+        self.current_page = "goals"
+        self.set_active("Goals")
+        self.clear()
+        self.header("Goals", "Turn plans into reality", "Keep the goals Atlas is actually tracking in view.")
+        panel = self.card(self.main)
+        panel.pack(fill="both", expand=True, padx=30, pady=(0, 28))
+        goals = (self._snapshot().get("intelligence", {}) or {}).get("goals", [])
+        if not goals:
+            ctk.CTkLabel(panel, text="No active goals yet.", text_color=self._c("text"),
+                         font=self._font(20, "bold")).pack(anchor="w", padx=25, pady=(35, 5))
+            ctk.CTkLabel(panel, text="Create a goal through Atlas and it will appear here.",
+                         text_color=self._c("muted"), font=self._font(9)).pack(anchor="w", padx=25)
+        else:
+            for goal in goals:
+                row = ctk.CTkFrame(panel, fg_color=self._c("surface_2"), corner_radius=15)
+                row.pack(fill="x", padx=22, pady=5)
+                status = "DONE" if goal.get("done") else "ACTIVE"
+                ctk.CTkLabel(row, text=status, text_color=self._c("success") if goal.get("done") else self._c("accent"),
+                             font=self._font(8, "bold"), width=65).pack(side="left", padx=12, pady=13)
+                ctk.CTkLabel(row, text=goal.get("goal", "Goal"), text_color=self._c("text"),
+                             font=self._font(10, "bold")).pack(side="left", padx=5)
+
+    def show_self(self):
+        self.current_page = "self"
+        self.set_active("Self")
+        self.clear()
+        profile = self._profile()
+        self.header("Self", "Understand yourself", "Your saved student profile, without inventing anything.")
+        panel = self.card(self.main)
+        panel.pack(fill="both", expand=True, padx=30, pady=(0, 28))
+        fields = [
+            ("NAME", profile.get("name") or "Not set"),
+            ("CLASS", profile.get("class") or profile.get("grade") or "Not set"),
+            ("SCHOOL", profile.get("school") or "Not set"),
+            ("LEARNING PREFERENCE", profile.get("learning_preference") or "Not set"),
+        ]
+        for label, value in fields:
+            row = ctk.CTkFrame(panel, fg_color=self._c("surface_2"), corner_radius=15)
+            row.pack(fill="x", padx=22, pady=5)
+            ctk.CTkLabel(row, text=label, text_color=self._c("accent"),
+                         font=self._font(7, "bold"), width=150, anchor="w").pack(side="left", padx=14, pady=13)
+            ctk.CTkLabel(row, text=str(value), text_color=self._c("text"),
+                         font=self._font(10, "bold"), anchor="w").pack(side="left", padx=8)
 
     def show_chat(self):
+        self.current_page = "chat"
         self.set_active("Chat"); self.clear(); self.header("Atlas Core", "Talk to Atlas", "One conversation, connected to your learning system.")
         panel = self.card(self.main, self._c("surface"), 25); panel.pack(fill="both", expand=True, padx=45, pady=(0, 28))
         self.chat_box = ctk.CTkTextbox(panel, fg_color="transparent", text_color=self._c("text"), font=self._font(11), wrap="word"); self.chat_box.pack(fill="both", expand=True, padx=20, pady=20); self.chat_box.configure(state="disabled")
@@ -351,6 +695,7 @@ class AtlasGUI(ctk.CTk):
         self._chat_add("ATLAS", answer)
 
     def show_voice(self):
+        self.current_page = "voice"
         self.set_active("Voice"); self.clear(); self.header("Voice Core", "Talk, don't type.", "Atlas can listen, reason and respond through the same brain.")
         panel = self.card(self.main, self._c("surface"), 28); panel.pack(fill="both", expand=True, padx=45, pady=(0, 28))
         ctk.CTkLabel(panel, text="✦", text_color=self._c("accent"), font=("Segoe UI Symbol", 110, "bold")).pack(pady=(80, 5))
@@ -375,6 +720,7 @@ class AtlasGUI(ctk.CTk):
         self.voice_busy = False; self.voice_status.configure(text=status, text_color=self._c("success") if "READY" in status else self._c("danger")); self.voice_hint.configure(text=hint); self.listen_btn.configure(state="normal", text="◉  START LISTENING")
 
     def show_subject(self, subject):
+        self.current_page = "subject"
         self.set_active("Maths" if subject == "Mathematics" else subject); self.clear(); self.header(subject, f"Your {subject} space", "A focused place to understand, practice and improve.")
         grid = ctk.CTkFrame(self.main, fg_color="transparent"); grid.pack(fill="both", expand=True, padx=45, pady=(0, 28)); grid.grid_columnconfigure((0,1), weight=1); grid.grid_rowconfigure((0,1), weight=1)
         cards = [("01", "UNDERSTAND", "Learn the idea from first principles.", lambda: self.open_subject_chat(subject, "Teach me the key concepts")), ("02", "RECALL", "Build a compact formula and concept sheet.", lambda: self.open_subject_chat(subject, "Give me the important formulas and explain them")), ("03", "PRACTICE", "Use questions to turn knowledge into skill.", self.show_practice), ("04", "FIX WEAK SPOTS", "Ask Atlas what needs attention next.", lambda: self.open_subject_chat(subject, "What should I revise and practice next?"))]
@@ -386,6 +732,7 @@ class AtlasGUI(ctk.CTk):
         self.show_chat(); self.chat_input.insert(0, f"{subject}: {prompt}"); self.chat_input.focus()
 
     def show_notes(self):
+        self.current_page = "knowledge"
         self.set_active("Notes"); self.clear(); self.header("Knowledge", "Your study shelf", "Capture explanations, summaries and useful discoveries.")
         panel = self.card(self.main); panel.pack(fill="both", expand=True, padx=45, pady=(0, 28)); toolbar = ctk.CTkFrame(panel, fg_color="transparent"); toolbar.pack(fill="x", padx=20, pady=18); self.button(toolbar, "＋  New note", self.new_note, 125, True).pack(side="left"); self.button(toolbar, "Open PDF", self.import_pdf, 110).pack(side="left", padx=8); self.notes_box = ctk.CTkTextbox(panel, fg_color=self._c("surface_2"), text_color=self._c("text"), font=self._font(11), wrap="word"); self.notes_box.pack(fill="both", expand=True, padx=20, pady=(0,20)); self.notes_box.insert("1.0", "Your notes live here.\n\nUse Chat to understand a concept, then save the useful part here.")
 
@@ -398,11 +745,13 @@ class AtlasGUI(ctk.CTk):
         messagebox.showinfo("Atlas Library", "PDF import is available through the education library.")
 
     def show_practice(self):
+        self.current_page = "practice"
         self.set_active("Practice"); self.clear(); self.header("Practice Lab", "Turn knowledge into skill", "Choose a subject and let Atlas generate the next useful challenge.")
         panel = self.card(self.main); panel.pack(fill="both", expand=True, padx=45, pady=(0,28)); ctk.CTkLabel(panel, text="WHAT DO YOU WANT TO PRACTICE?", text_color=self._c("accent"), font=self._font(9,"bold")).pack(anchor="w", padx=28, pady=(28,7)); ctk.CTkLabel(panel, text="Pick a subject", text_color=self._c("text"), font=self._font(24,"bold")).pack(anchor="w", padx=28); row=ctk.CTkFrame(panel,fg_color="transparent"); row.pack(anchor="w", padx=23, pady=24)
         for s in ["Physics","Mathematics","Chemistry"]: self.button(row,s,lambda x=s:self.open_subject_chat(x,"Give me one practice question at an appropriate difficulty."),160,s=="Physics").pack(side="left", padx=5)
 
     def show_planner(self):
+        self.current_page = "planner"
         self.set_active("Planner"); self.clear(); self.header("Planning", "Your study rhythm", "A simple plan that keeps the important things moving.")
         panel=self.card(self.main); panel.pack(fill="both",expand=True,padx=45,pady=(0,28));
         for time_,task in [("16:00","Tuition"),("20:00","Physics · focused study"),("20:45","Mathematics · practice"),("21:30","Chemistry · review")]:
@@ -410,6 +759,7 @@ class AtlasGUI(ctk.CTk):
         self.button(panel,"Ask Atlas to build a plan",lambda:self.open_subject_chat("Study","Build me a focused study plan."),220,True).pack(anchor="w",padx=25,pady=22)
 
     def show_memory(self):
+        self.current_page = "memory"
         self.set_active("Memory"); self.clear(); self.header("Long-term memory", "What Atlas remembers", "Inspect the durable information connected to your learning.")
         panel=self.card(self.main); panel.pack(fill="both",expand=True,padx=45,pady=(0,28)); box=ctk.CTkTextbox(panel,fg_color=self._c("surface_2"),text_color=self._c("text"),font=self._font(10)); box.pack(fill="both",expand=True,padx=20,pady=20)
         try:
@@ -418,6 +768,7 @@ class AtlasGUI(ctk.CTk):
         box.configure(state="disabled")
 
     def show_progress(self):
+        self.current_page = "progress"
         self.set_active("Progress"); self.clear(); self.header("Learning analytics", "See your momentum", "Progress should tell you what to do next — not just show numbers.")
         panel=self.card(self.main); panel.pack(fill="both",expand=True,padx=45,pady=(0,28)); data=self.progress.data() if self.progress else {}; signals=data.get("learning_signals",[]) if isinstance(data,dict) else []
         ctk.CTkLabel(panel,text=f"{len(signals)} learning signals recorded",text_color=self._c("muted"),font=self._font(10)).pack(anchor="w",padx=26,pady=(25,18))
@@ -428,6 +779,7 @@ class AtlasGUI(ctk.CTk):
 
     # ---------------- Studio: unlocked after seven days ----------------
     def show_studio(self):
+        self.current_page = "studio"
         if self.days_used < 7:
             self._studio_locked(); return
         self.set_active("Studio"); self.clear(); self.header("Atlas Studio", "Make Atlas yours", "Change the visual language, spacing, colors, background and feel.")
