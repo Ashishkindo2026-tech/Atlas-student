@@ -467,7 +467,7 @@ class AtlasGUI(ctk.CTk):
         self._draw_atlas_core()
         self._animate_core()
 
-    def _floating_card(self, parent, title, value, caption):
+    def _floating_card(self, parent, icon, title, value, caption):
         frame = ctk.CTkFrame(parent, fg_color=self._c("surface"), corner_radius=17,
                              border_width=1, border_color=self._c("border"))
         ctk.CTkLabel(frame, text=title, text_color=self._c("accent"),
