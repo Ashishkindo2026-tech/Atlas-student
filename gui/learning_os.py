@@ -166,6 +166,15 @@ class AtlasGUI(ctk.CTk):
     def _c(self, key):
         return self.ui[key]
 
+    def _font(self, size=None, weight=None):
+        """Return the configured UI font tuple used throughout the shell."""
+        family = self.ui.get("font", "Segoe UI")
+        base = float(self.ui.get("font_size", 11))
+        actual = int(round(float(size if size is not None else base)))
+        if self.ui.get("ui_scale", 1.0) != 1.0:
+            actual = max(7, int(round(actual * float(self.ui.get("ui_scale", 1.0)))))
+        return (family, actual, weight) if weight else (family, actual)
+
     def _profile(self):
         try:
             return student_system.intelligence.profile() if student_system else {}
