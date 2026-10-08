@@ -24,6 +24,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from brain.agent import process
+from gui.atlas_3d import Atlas3DView
 try:
     from student.atlas_student import system as student_system
 except Exception:
@@ -425,9 +426,9 @@ class AtlasGUI(ctk.CTk):
 
         visual = ctk.CTkFrame(self.main, fg_color="transparent")
         visual.pack(fill="both", expand=True, padx=(18, 10), pady=(8, 18))
-        canvas = tk.Canvas(visual, highlightthickness=0, bd=0, bg="#030611", relief="flat")
-        canvas.place(relx=0, rely=0, relwidth=1, relheight=1)
-        self.core_canvas = canvas
+        # Real OpenGL viewport; the dashboard cards remain normal CustomTkinter widgets.
+        self.core_view = Atlas3DView(visual, width=900, height=650, bg="#030611")
+        self.core_view.place(relx=0, rely=0, relwidth=1, relheight=1)
 
         actions = ctk.CTkFrame(visual, fg_color="#080D20", corner_radius=24, border_width=1, border_color="#27366E", width=238)
         actions.place(relx=.985, rely=.055, relwidth=.205, relheight=.79, anchor="ne")
@@ -464,8 +465,8 @@ class AtlasGUI(ctk.CTk):
         self.dashboard_input.pack(side="left", fill="x", expand=True)
         ctk.CTkButton(prompt, text="→", width=42, height=42, corner_radius=21, fg_color="#657BFF", hover_color="#8B5CF6", text_color="#FFFFFF", font=self._font(14, "bold"), command=self._dashboard_ask).pack(side="right", padx=5, pady=5)
         self.dashboard_input.bind("<Return>", lambda _e: self._dashboard_ask())
+        # Atlas3DView owns its OpenGL render loop.
         self._draw_atlas_core()
-        self._animate_core()
 
     def _floating_card(self, parent, icon, title, value, caption):
         frame = ctk.CTkFrame(parent, fg_color=self._c("surface"), corner_radius=17,
@@ -488,55 +489,12 @@ class AtlasGUI(ctk.CTk):
         row.pack(fill="x", padx=10, pady=2)
 
     def _draw_atlas_core(self):
-        canvas = self.core_canvas
-        canvas.delete("all")
-        w = max(canvas.winfo_width(), 850)
-        h = max(canvas.winfo_height(), 650)
-        cx, cy = w*.49, h*.46
-        max_r = min(w, h)*.24
-        for ratio, fill in [(1.65, "#070D25"), (1.38, "#0B1232"), (1.12, "#11154A"), (.90, "#15165B"), (.72, "#1C176A")]:
-            r = max_r*ratio
-            canvas.create_oval(cx-r, cy-r*.72, cx+r, cy+r*.72, fill=fill, outline="")
-        for ratio, width, outline in [(1.62,1,"#243B83"), (1.35,1,"#5269D5"), (1.08,2,"#667BFF"), (.90,1,"#8B5CF6"), (.70,2,"#3B56C4")]:
-            r = max_r*ratio
-            canvas.create_oval(cx-r, cy-r*.52, cx+r, cy+r*.52, outline=outline, width=width)
-        canvas.create_arc(cx-max_r*1.65, cy-max_r*.78, cx+max_r*1.65, cy+max_r*.78, start=12, extent=155, style="arc", outline="#667BFF", width=2)
-        canvas.create_arc(cx-max_r*1.45, cy-max_r*1.02, cx+max_r*1.45, cy+max_r*1.02, start=188, extent=150, style="arc", outline="#8B5CF6", width=2)
-        core_r = max_r*.56
-        for ratio, fill in [(1.18,"#2639A0"),(1.00,"#263BBA"),(.80,"#18296F"),(.61,"#101B4B")]:
-            r = core_r*ratio
-            canvas.create_oval(cx-r, cy-r, cx+r, cy+r, fill=fill, outline="#5D7DFF" if ratio==1.0 else "")
-        canvas.create_oval(cx-core_r*.78, cy-core_r*.78, cx+core_r*.78, cy+core_r*.78, outline="#B4C0FF", width=2)
-        canvas.create_arc(cx-core_r*.98, cy-core_r*.98, cx+core_r*.98, cy+core_r*.98, start=215, extent=205, style="arc", outline="#B58CFF", width=3)
-        canvas.create_text(cx, cy, text="A", fill="#FFFFFF", font=("Segoe UI", max(32,int(core_r*.72)), "bold"))
-        canvas.create_text(cx, cy+core_r+28, text="ATLAS CORE", fill="#7382B7", font=self._font(7, "bold"))
-        for scale, yoff in [(1.15,.92),(.86,1.08),(.60,1.20)]:
-            rw=max_r*scale; ry=max_r*.13; yy=cy+max_r*yoff
-            canvas.create_oval(cx-rw, yy-ry, cx+rw, yy+ry, outline="#263B83", width=1)
-        self._core_center=(cx,cy,max_r)
-        self._core_angle=getattr(self,"_core_angle",0.0)
-        self._core_orbits=[]
-        for idx,radius in enumerate((max_r*.82,max_r*1.12,max_r*1.42)):
-            item=canvas.create_oval(0,0,0,0,fill="#9AA8FF",outline="#596FFF")
-            self._core_orbits.append((item,radius,idx))
+        """Compatibility hook; the central scene is owned by Atlas3DView."""
+        return getattr(self, "core_view", None)
 
     def _animate_core(self):
-        try:
-            if not hasattr(self, "core_canvas") or not self.core_canvas.winfo_exists():
-                return
-            import math
-            canvas = self.core_canvas
-            cx, cy, _ = self._core_center
-            self._core_angle += .018
-            for item, radius, idx in self._core_orbits:
-                angle = self._core_angle * (1.0 + idx * .37) + idx * 2.1
-                x = cx + radius * math.cos(angle)
-                y = cy + radius * .55 * math.sin(angle)
-                r = 4 if idx != 1 else 5
-                canvas.coords(item, x-r, y-r, x+r, y+r)
-            self.after(40, self._animate_core)
-        except tk.TclError:
-            return
+        """Compatibility hook; OpenGLFrame owns the render loop."""
+        return getattr(self, "core_view", None)
 
     def _dashboard_ask(self):
         entry = getattr(self, "dashboard_input", None)
