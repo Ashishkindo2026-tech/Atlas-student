@@ -210,12 +210,3 @@ class Atlas3DView(OpenGLFrame):
         GL.glLineWidth(1.0)
         self._platform()
 
-        # Re-render periodically through OpenGLFrame's animation mechanism.
-        self.after(16, self._tick)
-
-    def _tick(self):
-        try:
-            if self.winfo_exists():
-                self.tkRedraw()
-        except Exception:
-            pass
